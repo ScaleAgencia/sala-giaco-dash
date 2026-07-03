@@ -45,6 +45,17 @@ function trendHTML(cur, prev, higherBetter){
   return '<span class="trend '+(good?'up':'down')+'">'+(up?'▲':'▼')+' '+nf1.format(Math.abs(ch))+'%</span>';
 }
 
+/* donut reutilizável (nível de módulo) */
+function donutHTML(frac,color,cv,cl,size){ size=size||160; var sw=15,r=(size-sw)/2,cx=size/2,c=2*Math.PI*r,off=c*(1-clamp(frac));
+  return '<div class="gauge" style="width:'+size+'px;height:'+size+'px"><svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'
+    +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#1d2740" stroke-width="'+sw+'"/>'
+    +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 '+cx+' '+cx+')"/></svg>'
+    +'<div class="gauge-num"><span class="g-val" style="color:'+color+'">'+cv+'</span><span class="g-lab" style="color:'+color+'">'+cl+'</span></div></div>'; }
+/* funde distribuições de perfil de LP + FORM5 por rótulo normalizado */
+function normKey(s){ return prettify(s).toLowerCase().replace(/[^a-zà-ú0-9]+/g,' ').trim().split(' ').filter(Boolean).sort().join(' '); }
+function mergeDist(){ var m={},order=[]; for(var i=0;i<arguments.length;i++){ arr(arguments[i]).forEach(function(x){ var k=normKey(x.label); if(k===''){return;} if(!m[k]){m[k]={label:prettify(x.label),n:0}; order.push(k);} m[k].n+=(x.n||0); }); }
+  return order.map(function(k){return m[k];}).sort(function(x,y){return y.n-x.n;}); }
+
 /* =====================================================================
    FUNNEL FACTORY — renderiza um funil completo em elementos key-prefixados
    ===================================================================== */
@@ -346,6 +357,86 @@ function Funnel(key, fd){
   };
 }
 
+/* =====================================================================
+   ABA LEADS — visão geral combinada (LP + FORM5), base completa
+   ===================================================================== */
+function mountLeads(){
+  var L=D.lp||{}, F=D.form5||{}, lt=L.totals||{}, ft=F.totals||{};
+  function s2(k){ return (lt[k]||0)+(ft[k]||0); }
+  var total=s2('leads'), A=s2('A'),B=s2('B'),C=s2('C'),Dd=s2('D'),E=s2('E');
+  var qualif=A+B, naoQ=C+Dd+E, spend=s2('spend'), attributed=s2('attributed');
+  var qPct=dv(qualif,total)*100, nqPct=dv(naoQ,total)*100, eqPct=dv(E,total)*100, rPct=dv(attributed,total)*100;
+  var isGood = qualif>=naoQ;
+
+  /* --- big stats --- */
+  function statCard(gold,lab,val,foot){ return '<div class="stat-card'+(gold?' gold':'')+'"><div class="s-lab">'+lab+'</div><div class="s-val">'+val+'</div><div class="s-foot">'+foot+'</div></div>'; }
+  var stats='<div class="big-stats">'
+    +statCard(false,'Total de leads',intf(total),'<b>'+intf(lt.leads||0)+'</b> LP · <b>'+intf(ft.leads||0)+'</b> FORM5')
+    +statCard(true,'Qualificados (A+B)',intf(qualif),'<b>'+pct(qPct)+'</b> da base · perfil de conselheiro')
+    +statCard(false,'Não-qualificados (C–E)',intf(naoQ),'<b>'+pct(nqPct)+'</b> da base · '+intf(E)+' desqualificados (E)')
+    +statCard(false,'Leads rastreados',intf(attributed),'<b>'+pct(rPct)+'</b> vinculados a um anúncio')
+    +'</div>';
+
+  /* --- verdict --- */
+  var verdict='<div class="verdict'+(isGood?'':' bad')+'">'
+    +donutHTML(dv(qualif,total),isGood?'#e8b64a':'#f2637b',total?pct(qPct):'—','qualif A+B',132)
+    +'<div class="v-txt"><div class="v-tag">Veredito geral · LP + FORM5</div>'
+    +'<div class="v-head">A maioria dos seus leads '+(isGood?'é <span class="hi">QUALIFICADA</span>':'ainda <span class="hi">NÃO é qualificada</span>')+'</div>'
+    +'<div class="v-sub"><b style="color:var(--ink2)">'+intf(qualif)+'</b> de <b style="color:var(--ink2)">'+intf(total)+'</b> leads ('+pct(qPct)+') são Leadscore <b style="color:var(--A)">A</b> ou <b style="color:var(--B)">B</b> — cargo/interesse de conselheiro. '
+    +(isGood?'Boa densidade de lead bom na base.':'Vale revisar segmentação e criativos p/ atrair mais perfil de conselheiro.')+'</div></div></div>';
+
+  /* --- termômetro A–E --- */
+  var tiersInfo=[['A','Quente',A],['B','Morno',B],['C','Médio',C],['D','Frio',Dd],['E','Desqualif.',E]];
+  var thermo='<div class="thermo">'+tiersInfo.map(function(t){ var w=dv(t[2],total)*100; if(w<=0) return '';
+    return '<div class="seg" style="width:'+w+'%;background:'+TC[t[0]]+'" title="'+t[0]+' '+t[1]+': '+intf(t[2])+' ('+pct(w)+')">'+(w>6?t[0]+'<small>'+Math.round(w)+'%</small>':'')+'</div>'; }).join('')+'</div>';
+  var thLegend='<div class="thermo-legend">'+tiersInfo.map(function(t){ return '<span class="li"><span class="sw" style="background:'+TC[t[0]]+'"></span><b>'+t[0]+'</b> '+t[1]+' · '+intf(t[2])+' ('+pct(dv(t[2],total)*100)+')</span>'; }).join('')+'</div>';
+  var thSplit='<div class="thermo-split"><span>✅ Qualificados <b>A+B</b>: <b style="color:var(--gold2)">'+intf(qualif)+' ('+pct(qPct)+')</b></span>'
+    +'<span>⚠️ Médio/Frio <b>C+D</b>: <b>'+intf(C+Dd)+' ('+pct(dv(C+Dd,total)*100)+')</b></span>'
+    +'<span>❌ Desqualificados <b>E</b>: <b style="color:var(--bad)">'+intf(E)+' ('+pct(eqPct)+')</b></span></div>';
+  var thermoCard='<div class="card"><div class="card-h">Termômetro de qualidade da base <span class="hint">todos os leads dos 2 funis por Leadscore</span></div>'
+    +'<div class="thermo-wrap">'+thermo+'</div>'+thLegend+thSplit+'</div>';
+
+  /* --- comparação por fonte --- */
+  function srcRow(tag,cls,t){ var qy=(t.A||0)+(t.B||0), taxa=dv(qy,t.leads||0)*100, cpl=qy>0?dv(t.spend||0,qy):null;
+    return '<tr><td><span class="src-pill '+cls+'">'+tag+'</span></td><td class="num">'+intf(t.leads||0)+'</td>'
+      +'<td class="num qcell">'+intf(qy)+'</td><td class="num">'+(t.leads?pct(taxa):'—')+'</td>'
+      +'<td class="num">'+money0(t.spend||0)+'</td><td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,60,150)+'">'+money0(cpl)+'</span>':'—')+'</td></tr>'; }
+  var totRow=(function(){ var qy=qualif, taxa=dv(qy,total)*100, cpl=qy>0?dv(spend,qy):null;
+    return '<tr style="border-top:2px solid var(--line)"><td><b>Total</b></td><td class="num"><b>'+intf(total)+'</b></td>'
+      +'<td class="num qcell"><b>'+intf(qy)+'</b></td><td class="num"><b>'+pct(taxa)+'</b></td>'
+      +'<td class="num"><b>'+money0(spend)+'</b></td><td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,60,150)+'">'+money0(cpl)+'</span>':'—')+'</td></tr>'; })();
+  var srcCard='<div class="card"><div class="card-h">Comparação por fonte <span class="hint">qual canal traz mais lead qualificado</span></div>'
+    +'<table class="tbl"><thead><tr><th>Fonte</th><th>Leads</th><th>Qualif</th><th>%Qualif</th><th>Invest</th><th>CPL Qualif</th></tr></thead><tbody>'
+    +srcRow('SALA LP','src-lp',lt)+srcRow('SALA FORM5','src-f5',ft)+totRow+'</tbody></table></div>';
+
+  var donutCard='<div class="card"><div class="card-h">Qualificado vs Não-qualificado <span class="hint">base geral</span></div>'
+    +'<div class="score-body"><div>'+donutHTML(dv(qualif,total),'#e8b64a',total?pct(qPct):'—','qualif A+B',150)+'</div>'
+    +'<div style="flex:1">'
+      +'<div class="hl-row"><span class="hl-k"><b style="color:var(--gold2)">Qualificado</b> A+B</span><span class="hl-bar"><span style="width:'+qPct+'%;background:linear-gradient(90deg,var(--A),var(--B))"></span></span><span class="hl-v">'+intf(qualif)+' · '+pct(qPct)+'</span></div>'
+      +'<div class="hl-row"><span class="hl-k"><b style="color:var(--muted)">Não-qualif.</b> C–E</span><span class="hl-bar"><span style="width:'+nqPct+'%;background:var(--D)"></span></span><span class="hl-v">'+intf(naoQ)+' · '+pct(nqPct)+'</span></div>'
+      +'<div class="hl-row"><span class="hl-k"><b style="color:var(--bad)">Desqualif.</b> E</span><span class="hl-bar"><span style="width:'+eqPct+'%;background:var(--E)"></span></span><span class="hl-v">'+intf(E)+' · '+pct(eqPct)+'</span></div>'
+    +'</div></div></div>';
+
+  /* --- % que respondem cada critério (combinado) --- */
+  var LC=arr(L.criteria), FC=arr(F.criteria);
+  var crit = LC.map(function(c,i){ var fc=FC[i]||{}; var n=(c.n||0)+(fc.n||0); return {label:c.label,hint:c.hint,n:n,pct:dv(n,total)*100}; });
+  var critCard='<div class="card"><div class="card-h">% que respondem cada critério <span class="hint">quantos dos '+intf(total)+' leads atendem cada pergunta do Leadscore</span></div>'
+    +crit.map(function(cr){ var w=Math.max(3,cr.pct); return '<div class="crit"><div class="crit-top"><span class="cl">'+esc(cr.label)+'<small>'+esc(cr.hint)+'</small></span><span class="cn">'+intf(cr.n)+' <small>('+pct(cr.pct)+')</small></span></div><div class="crit-track"><span style="width:'+w+'%"></span></div></div>'; }).join('')+'</div>';
+
+  /* --- perfil dos qualificados (merge LP + FORM5) --- */
+  function qbBlockG(title,list){ var max=Math.max.apply(null,list.map(function(x){return x.n;}).concat([1]));
+    var bars=list.length?list.slice(0,8).map(function(x){ return '<div class="qbar"><div class="qbar-top"><span class="l" title="'+esc(x.label)+'">'+esc(x.label)+'</span><span class="n">'+x.n+'</span></div><div class="qbar-track"><span style="width:'+Math.max(6,x.n/max*100)+'%"></span></div></div>'; }).join(''):'<div class="empty">Sem qualificados ainda.</div>';
+    return '<div><div class="qb-h">'+title+'</div>'+bars+'</div>'; }
+  var profCard='<div class="card"><div class="card-h">Perfil dos qualificados (A + B) <span class="hint">LP + FORM5 somados · base completa</span></div>'
+    +'<div class="row-3">'+qbBlockG('Cargo',mergeDist(L.qualifCargo,F.qualifCargo))
+    +qbBlockG('Área de atuação',mergeDist(L.qualifArea,F.qualifArea))
+    +qbBlockG('Conhecimento sobre conselho',mergeDist(L.qualifNivel,F.qualifNivel))+'</div></div>';
+
+  document.getElementById('tab-leads').innerHTML =
+    '<div class="coverage">Visão geral somando os <b>2 funis</b> (SALA LP + SALA FORM5) · base completa · Leadscore idêntico nos dois · '+intf(total)+' leads no total, '+intf(qualif)+' qualificados (A+B)</div>'
+    + stats + verdict + thermoCard + '<div class="row-2">'+donutCard+srcCard+'</div>' + critCard + profCard;
+}
+
 /* =================== BOOT =================== */
 function el(id){ return document.getElementById(id); }
 el('updated').textContent = D.generatedAtBR || '—';
@@ -355,10 +446,11 @@ if(!D.lp && !D.form5){
   el('tab-lp').innerHTML='<div class="coverage"><b>Sem dados.</b> Rode o build.ps1 para gerar o data.js.</div>';
 } else {
   var funnels={ lp:new Funnel('lp', D.lp||{}), f5:new Funnel('f5', D.form5||{}) };
-  funnels.lp.mount(); funnels.f5.mount();
-  function activateTab(id){ Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
-    el('tab-lp').classList.toggle('hidden',id!=='lp'); el('tab-f5').classList.toggle('hidden',id!=='f5'); }
-  function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(t!=='lp'&&t!=='f5')return; activateTab(t); if(parts[1]&&funnels[t])funnels[t].showSub(parts[1]); }
+  funnels.lp.mount(); funnels.f5.mount(); mountLeads();
+  var TABS=['lp','f5','leads'];
+  function activateTab(id){ if(TABS.indexOf(id)<0)id='lp'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
+    TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
+  function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t])funnels[t].showSub(parts[1]); }
   Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(t){ t.addEventListener('click',function(){ var id=t.getAttribute('data-tab'); activateTab(id); if(history.replaceState)history.replaceState(null,'','#'+id); }); });
   route();
   window.addEventListener('hashchange',route);
