@@ -1,0 +1,6 @@
+data/
+*.png
+chrome-scratch/
+refresh.log
+*.bat
+cudir/
