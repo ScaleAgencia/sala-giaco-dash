@@ -358,83 +358,138 @@ function Funnel(key, fd){
 }
 
 /* =====================================================================
-   ABA LEADS — visão geral combinada (LP + FORM5), base completa
+   ABA LEADS — visão geral combinada (LP + FORM5), com filtro de data
    ===================================================================== */
 function mountLeads(){
   var L=D.lp||{}, F=D.form5||{}, lt=L.totals||{}, ft=F.totals||{};
-  function s2(k){ return (lt[k]||0)+(ft[k]||0); }
-  var total=s2('leads'), A=s2('A'),B=s2('B'),C=s2('C'),Dd=s2('D'),E=s2('E');
-  var qualif=A+B, naoQ=C+Dd+E, spend=s2('spend'), attributed=s2('attributed');
-  var qPct=dv(qualif,total)*100, nqPct=dv(naoQ,total)*100, eqPct=dv(E,total)*100, rPct=dv(attributed,total)*100;
-  var isGood = qualif>=naoQ;
+  var minDate=[L.dateMin,F.dateMin].filter(Boolean).sort()[0]||'';
+  var maxDate=[L.dateMax,F.dateMax].filter(Boolean).sort().slice(-1)[0]||'';
+  var leadMin=[L.leadDateMin,F.leadDateMin].filter(Boolean).sort()[0]||minDate;
+  var leadMax=[L.leadDateMax,F.leadDateMax].filter(Boolean).sort().slice(-1)[0]||maxDate;
+  var period='tudo', customRange=null;
+  function q(id){ return document.getElementById('leads-'+id); }
+  function rangeFor(k){
+    if(k==='custom'&&customRange) return customRange;
+    if(k==='hoje') return [maxDate,maxDate];
+    if(k==='ontem'){ var y=addDays(maxDate,-1); return [y,y]; }
+    if(k==='7d') return [addDays(maxDate,-6),maxDate];
+    if(k==='30d') return [addDays(maxDate,-29),maxDate];
+    if(k==='leads') return [leadMin,leadMax];
+    return [minDate,maxDate];
+  }
+  /* agrega os 2 funis no período. 'tudo' usa os totais (inclui leads sem data);
+     recortes de data somam a partir do daily/grain (só leads com data). */
+  function periodAgg(rng,isTudo){
+    var o={leads:0,A:0,B:0,C:0,D:0,E:0,spend:0,attributed:0,lp:{leads:0,A:0,B:0,spend:0},f5:{leads:0,A:0,B:0,spend:0}};
+    var pairs=[['lp',L],['f5',F]];
+    if(isTudo){ pairs.forEach(function(p){ var k=p[0],t=p[1].totals||{};
+      o.leads+=t.leads||0;o.A+=t.A||0;o.B+=t.B||0;o.C+=t.C||0;o.D+=t.D||0;o.E+=t.E||0;o.spend+=t.spend||0;o.attributed+=t.attributed||0;
+      o[k].leads=t.leads||0;o[k].A=t.A||0;o[k].B=t.B||0;o[k].spend=t.spend||0; }); return o; }
+    pairs.forEach(function(p){ var k=p[0],fd=p[1]||{};
+      arr(fd.daily).forEach(function(d){ if(!isDate(d.date)||!inRange(d.date,rng))return;
+        o.leads+=d.leads||0;o.A+=d.A||0;o.B+=d.B||0;o.C+=d.C||0;o.D+=d.D||0;o.E+=d.E||0;o.spend+=d.spend||0;
+        o[k].leads+=d.leads||0;o[k].A+=d.A||0;o[k].B+=d.B||0;o[k].spend+=d.spend||0; });
+      arr(fd.grain).forEach(function(g){ if(!isDate(g.date)||!inRange(g.date,rng))return; if(g.campaign!=='SEM_RASTREIO')o.attributed+=g.leads||0; });
+    });
+    return o;
+  }
 
-  /* --- big stats --- */
+  /* ---------- seções que reagem ao período ---------- */
   function statCard(gold,lab,val,foot){ return '<div class="stat-card'+(gold?' gold':'')+'"><div class="s-lab">'+lab+'</div><div class="s-val">'+val+'</div><div class="s-foot">'+foot+'</div></div>'; }
-  var stats='<div class="big-stats">'
-    +statCard(false,'Total de leads',intf(total),'<b>'+intf(lt.leads||0)+'</b> LP · <b>'+intf(ft.leads||0)+'</b> FORM5')
-    +statCard(true,'Qualificados (A+B)',intf(qualif),'<b>'+pct(qPct)+'</b> da base · perfil de conselheiro')
-    +statCard(false,'Não-qualificados (C–E)',intf(naoQ),'<b>'+pct(nqPct)+'</b> da base · '+intf(E)+' desqualificados (E)')
-    +statCard(false,'Leads rastreados',intf(attributed),'<b>'+pct(rPct)+'</b> vinculados a um anúncio')
-    +'</div>';
+  function renderPeriod(o){
+    var total=o.leads, A=o.A,B=o.B,C=o.C,Dd=o.D,E=o.E, qualif=A+B, naoQ=C+Dd+E, spend=o.spend, attributed=o.attributed;
+    var qPct=dv(qualif,total)*100, nqPct=dv(naoQ,total)*100, eqPct=dv(E,total)*100, rPct=dv(attributed,total)*100;
+    var isGood=qualif>=naoQ;
 
-  /* --- verdict --- */
-  var verdict='<div class="verdict'+(isGood?'':' bad')+'">'
-    +donutHTML(dv(qualif,total),isGood?'#e8b64a':'#f2637b',total?pct(qPct):'—','qualif A+B',132)
-    +'<div class="v-txt"><div class="v-tag">Veredito geral · LP + FORM5</div>'
-    +'<div class="v-head">A maioria dos seus leads '+(isGood?'é <span class="hi">QUALIFICADA</span>':'ainda <span class="hi">NÃO é qualificada</span>')+'</div>'
-    +'<div class="v-sub"><b style="color:var(--ink2)">'+intf(qualif)+'</b> de <b style="color:var(--ink2)">'+intf(total)+'</b> leads ('+pct(qPct)+') são Leadscore <b style="color:var(--A)">A</b> ou <b style="color:var(--B)">B</b> — cargo/interesse de conselheiro. '
-    +(isGood?'Boa densidade de lead bom na base.':'Vale revisar segmentação e criativos p/ atrair mais perfil de conselheiro.')+'</div></div></div>';
+    q('stats').innerHTML='<div class="big-stats">'
+      +statCard(false,'Total de leads',intf(total),'<b>'+intf(o.lp.leads)+'</b> LP · <b>'+intf(o.f5.leads)+'</b> FORM5')
+      +statCard(true,'Qualificados (A+B)',intf(qualif),'<b>'+pct(qPct)+'</b> da base · perfil de conselheiro')
+      +statCard(false,'Não-qualificados (C–E)',intf(naoQ),'<b>'+pct(nqPct)+'</b> da base · '+intf(E)+' desqualificados (E)')
+      +statCard(false,'Leads rastreados',intf(attributed),'<b>'+pct(rPct)+'</b> vinculados a um anúncio')
+      +'</div>';
 
-  /* --- termômetro A–E --- */
-  var tiersInfo=[['A','Quente',A],['B','Morno',B],['C','Médio',C],['D','Frio',Dd],['E','Desqualif.',E]];
-  var thermo='<div class="thermo">'+tiersInfo.map(function(t){ var w=dv(t[2],total)*100; if(w<=0) return '';
-    return '<div class="seg" style="width:'+w+'%;background:'+TC[t[0]]+'" title="'+t[0]+' '+t[1]+': '+intf(t[2])+' ('+pct(w)+')">'+(w>6?t[0]+'<small>'+Math.round(w)+'%</small>':'')+'</div>'; }).join('')+'</div>';
-  var thLegend='<div class="thermo-legend">'+tiersInfo.map(function(t){ return '<span class="li"><span class="sw" style="background:'+TC[t[0]]+'"></span><b>'+t[0]+'</b> '+t[1]+' · '+intf(t[2])+' ('+pct(dv(t[2],total)*100)+')</span>'; }).join('')+'</div>';
-  var thSplit='<div class="thermo-split"><span>✅ Qualificados <b>A+B</b>: <b style="color:var(--gold2)">'+intf(qualif)+' ('+pct(qPct)+')</b></span>'
-    +'<span>⚠️ Médio/Frio <b>C+D</b>: <b>'+intf(C+Dd)+' ('+pct(dv(C+Dd,total)*100)+')</b></span>'
-    +'<span>❌ Desqualificados <b>E</b>: <b style="color:var(--bad)">'+intf(E)+' ('+pct(eqPct)+')</b></span></div>';
-  var thermoCard='<div class="card"><div class="card-h">Termômetro de qualidade da base <span class="hint">todos os leads dos 2 funis por Leadscore</span></div>'
-    +'<div class="thermo-wrap">'+thermo+'</div>'+thLegend+thSplit+'</div>';
+    if(total<=0){ q('verdict').innerHTML='<div class="verdict"><div class="v-txt"><div class="v-tag">Veredito geral · LP + FORM5</div><div class="v-head">Sem leads no período selecionado</div><div class="v-sub">Ajuste o filtro de data acima.</div></div></div>';
+      q('thermo').innerHTML=''; q('qdonut').innerHTML=''; q('source').innerHTML=''; return; }
 
-  /* --- comparação por fonte --- */
-  function srcRow(tag,cls,t){ var qy=(t.A||0)+(t.B||0), taxa=dv(qy,t.leads||0)*100, cpl=qy>0?dv(t.spend||0,qy):null;
-    return '<tr><td><span class="src-pill '+cls+'">'+tag+'</span></td><td class="num">'+intf(t.leads||0)+'</td>'
-      +'<td class="num qcell">'+intf(qy)+'</td><td class="num">'+(t.leads?pct(taxa):'—')+'</td>'
-      +'<td class="num">'+money0(t.spend||0)+'</td><td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,60,150)+'">'+money0(cpl)+'</span>':'—')+'</td></tr>'; }
-  var totRow=(function(){ var qy=qualif, taxa=dv(qy,total)*100, cpl=qy>0?dv(spend,qy):null;
-    return '<tr style="border-top:2px solid var(--line)"><td><b>Total</b></td><td class="num"><b>'+intf(total)+'</b></td>'
-      +'<td class="num qcell"><b>'+intf(qy)+'</b></td><td class="num"><b>'+pct(taxa)+'</b></td>'
-      +'<td class="num"><b>'+money0(spend)+'</b></td><td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,60,150)+'">'+money0(cpl)+'</span>':'—')+'</td></tr>'; })();
-  var srcCard='<div class="card"><div class="card-h">Comparação por fonte <span class="hint">qual canal traz mais lead qualificado</span></div>'
-    +'<table class="tbl"><thead><tr><th>Fonte</th><th>Leads</th><th>Qualif</th><th>%Qualif</th><th>Invest</th><th>CPL Qualif</th></tr></thead><tbody>'
-    +srcRow('SALA LP','src-lp',lt)+srcRow('SALA FORM5','src-f5',ft)+totRow+'</tbody></table></div>';
+    q('verdict').innerHTML='<div class="verdict'+(isGood?'':' bad')+'">'
+      +donutHTML(dv(qualif,total),isGood?'#e8b64a':'#f2637b',pct(qPct),'qualif A+B',132)
+      +'<div class="v-txt"><div class="v-tag">Veredito geral · LP + FORM5</div>'
+      +'<div class="v-head">A maioria dos seus leads '+(isGood?'é <span class="hi">QUALIFICADA</span>':'ainda <span class="hi">NÃO é qualificada</span>')+'</div>'
+      +'<div class="v-sub"><b style="color:var(--ink2)">'+intf(qualif)+'</b> de <b style="color:var(--ink2)">'+intf(total)+'</b> leads ('+pct(qPct)+') são Leadscore <b style="color:var(--A)">A</b> ou <b style="color:var(--B)">B</b> — cargo/interesse de conselheiro. '
+      +(isGood?'Boa densidade de lead bom na base.':'Vale revisar segmentação e criativos p/ atrair mais perfil de conselheiro.')+'</div></div></div>';
 
-  var donutCard='<div class="card"><div class="card-h">Qualificado vs Não-qualificado <span class="hint">base geral</span></div>'
-    +'<div class="score-body"><div>'+donutHTML(dv(qualif,total),'#e8b64a',total?pct(qPct):'—','qualif A+B',150)+'</div>'
-    +'<div style="flex:1">'
-      +'<div class="hl-row"><span class="hl-k"><b style="color:var(--gold2)">Qualificado</b> A+B</span><span class="hl-bar"><span style="width:'+qPct+'%;background:linear-gradient(90deg,var(--A),var(--B))"></span></span><span class="hl-v">'+intf(qualif)+' · '+pct(qPct)+'</span></div>'
-      +'<div class="hl-row"><span class="hl-k"><b style="color:var(--muted)">Não-qualif.</b> C–E</span><span class="hl-bar"><span style="width:'+nqPct+'%;background:var(--D)"></span></span><span class="hl-v">'+intf(naoQ)+' · '+pct(nqPct)+'</span></div>'
-      +'<div class="hl-row"><span class="hl-k"><b style="color:var(--bad)">Desqualif.</b> E</span><span class="hl-bar"><span style="width:'+eqPct+'%;background:var(--E)"></span></span><span class="hl-v">'+intf(E)+' · '+pct(eqPct)+'</span></div>'
-    +'</div></div></div>';
+    var tiersInfo=[['A','Quente',A],['B','Morno',B],['C','Médio',C],['D','Frio',Dd],['E','Desqualif.',E]];
+    var thermo='<div class="thermo">'+tiersInfo.map(function(t){ var w=dv(t[2],total)*100; if(w<=0) return '';
+      return '<div class="seg" style="width:'+w+'%;background:'+TC[t[0]]+'" title="'+t[0]+' '+t[1]+': '+intf(t[2])+' ('+pct(w)+')">'+(w>6?t[0]+'<small>'+Math.round(w)+'%</small>':'')+'</div>'; }).join('')+'</div>';
+    var thLegend='<div class="thermo-legend">'+tiersInfo.map(function(t){ return '<span class="li"><span class="sw" style="background:'+TC[t[0]]+'"></span><b>'+t[0]+'</b> '+t[1]+' · '+intf(t[2])+' ('+pct(dv(t[2],total)*100)+')</span>'; }).join('')+'</div>';
+    var thSplit='<div class="thermo-split"><span>✅ Qualificados <b>A+B</b>: <b style="color:var(--gold2)">'+intf(qualif)+' ('+pct(qPct)+')</b></span>'
+      +'<span>⚠️ Médio/Frio <b>C+D</b>: <b>'+intf(C+Dd)+' ('+pct(dv(C+Dd,total)*100)+')</b></span>'
+      +'<span>❌ Desqualificados <b>E</b>: <b style="color:var(--bad)">'+intf(E)+' ('+pct(eqPct)+')</b></span></div>';
+    q('thermo').innerHTML='<div class="card"><div class="card-h">Termômetro de qualidade da base <span class="hint">todos os leads dos 2 funis por Leadscore · no período</span></div>'
+      +'<div class="thermo-wrap">'+thermo+'</div>'+thLegend+thSplit+'</div>';
 
-  /* --- % que respondem cada critério (combinado) --- */
-  var LC=arr(L.criteria), FC=arr(F.criteria);
-  var crit = LC.map(function(c,i){ var fc=FC[i]||{}; var n=(c.n||0)+(fc.n||0); return {label:c.label,hint:c.hint,n:n,pct:dv(n,total)*100}; });
-  var critCard='<div class="card"><div class="card-h">% que respondem cada critério <span class="hint">quantos dos '+intf(total)+' leads atendem cada pergunta do Leadscore</span></div>'
-    +crit.map(function(cr){ var w=Math.max(3,cr.pct); return '<div class="crit"><div class="crit-top"><span class="cl">'+esc(cr.label)+'<small>'+esc(cr.hint)+'</small></span><span class="cn">'+intf(cr.n)+' <small>('+pct(cr.pct)+')</small></span></div><div class="crit-track"><span style="width:'+w+'%"></span></div></div>'; }).join('')+'</div>';
+    q('qdonut').innerHTML='<div class="card"><div class="card-h">Qualificado vs Não-qualificado <span class="hint">no período</span></div>'
+      +'<div class="score-body"><div>'+donutHTML(dv(qualif,total),'#e8b64a',pct(qPct),'qualif A+B',150)+'</div>'
+      +'<div style="flex:1">'
+        +'<div class="hl-row"><span class="hl-k"><b style="color:var(--gold2)">Qualificado</b> A+B</span><span class="hl-bar"><span style="width:'+qPct+'%;background:linear-gradient(90deg,var(--A),var(--B))"></span></span><span class="hl-v">'+intf(qualif)+' · '+pct(qPct)+'</span></div>'
+        +'<div class="hl-row"><span class="hl-k"><b style="color:var(--muted)">Não-qualif.</b> C–E</span><span class="hl-bar"><span style="width:'+nqPct+'%;background:var(--D)"></span></span><span class="hl-v">'+intf(naoQ)+' · '+pct(nqPct)+'</span></div>'
+        +'<div class="hl-row"><span class="hl-k"><b style="color:var(--bad)">Desqualif.</b> E</span><span class="hl-bar"><span style="width:'+eqPct+'%;background:var(--E)"></span></span><span class="hl-v">'+intf(E)+' · '+pct(eqPct)+'</span></div>'
+      +'</div></div></div>';
 
-  /* --- perfil dos qualificados (merge LP + FORM5) --- */
-  function qbBlockG(title,list){ var max=Math.max.apply(null,list.map(function(x){return x.n;}).concat([1]));
-    var bars=list.length?list.slice(0,8).map(function(x){ return '<div class="qbar"><div class="qbar-top"><span class="l" title="'+esc(x.label)+'">'+esc(x.label)+'</span><span class="n">'+x.n+'</span></div><div class="qbar-track"><span style="width:'+Math.max(6,x.n/max*100)+'%"></span></div></div>'; }).join(''):'<div class="empty">Sem qualificados ainda.</div>';
-    return '<div><div class="qb-h">'+title+'</div>'+bars+'</div>'; }
-  var profCard='<div class="card"><div class="card-h">Perfil dos qualificados (A + B) <span class="hint">LP + FORM5 somados · base completa</span></div>'
-    +'<div class="row-3">'+qbBlockG('Cargo',mergeDist(L.qualifCargo,F.qualifCargo))
-    +qbBlockG('Área de atuação',mergeDist(L.qualifArea,F.qualifArea))
-    +qbBlockG('Conhecimento sobre conselho',mergeDist(L.qualifNivel,F.qualifNivel))+'</div></div>';
+    function srcRow(tag,cls,t){ var qy=(t.A||0)+(t.B||0), taxa=dv(qy,t.leads||0)*100, cpl=qy>0?dv(t.spend||0,qy):null;
+      return '<tr><td><span class="src-pill '+cls+'">'+tag+'</span></td><td class="num">'+intf(t.leads||0)+'</td>'
+        +'<td class="num qcell">'+intf(qy)+'</td><td class="num">'+(t.leads?pct(taxa):'—')+'</td>'
+        +'<td class="num">'+money0(t.spend||0)+'</td><td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,60,150)+'">'+money0(cpl)+'</span>':'—')+'</td></tr>'; }
+    var totRow=(function(){ var qy=qualif, taxa=dv(qy,total)*100, cpl=qy>0?dv(spend,qy):null;
+      return '<tr style="border-top:2px solid var(--line)"><td><b>Total</b></td><td class="num"><b>'+intf(total)+'</b></td>'
+        +'<td class="num qcell"><b>'+intf(qy)+'</b></td><td class="num"><b>'+pct(taxa)+'</b></td>'
+        +'<td class="num"><b>'+money0(spend)+'</b></td><td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,60,150)+'">'+money0(cpl)+'</span>':'—')+'</td></tr>'; })();
+    q('source').innerHTML='<div class="card"><div class="card-h">Comparação por fonte <span class="hint">qual canal traz mais lead qualificado · no período</span></div>'
+      +'<table class="tbl"><thead><tr><th>Fonte</th><th>Leads</th><th>Qualif</th><th>%Qualif</th><th>Invest</th><th>CPL Qualif</th></tr></thead><tbody>'
+      +srcRow('SALA LP','src-lp',o.lp)+srcRow('SALA FORM5','src-f5',o.f5)+totRow+'</tbody></table></div>';
+  }
+
+  /* ---------- seções base completa (não filtram por data) ---------- */
+  function renderStatic(){
+    var totalAll=(lt.leads||0)+(ft.leads||0);
+    var LC=arr(L.criteria), FC=arr(F.criteria);
+    var crit=LC.map(function(c,i){ var fc=FC[i]||{}; var n=(c.n||0)+(fc.n||0); return {label:c.label,hint:c.hint,n:n,pct:dv(n,totalAll)*100}; });
+    q('criteria').innerHTML='<div class="card"><div class="card-h">% que respondem cada critério <span class="hint">quantos dos '+intf(totalAll)+' leads atendem cada pergunta · base completa</span></div>'
+      +crit.map(function(cr){ var w=Math.max(3,cr.pct); return '<div class="crit"><div class="crit-top"><span class="cl">'+esc(cr.label)+'<small>'+esc(cr.hint)+'</small></span><span class="cn">'+intf(cr.n)+' <small>('+pct(cr.pct)+')</small></span></div><div class="crit-track"><span style="width:'+w+'%"></span></div></div>'; }).join('')+'</div>';
+    function qbBlockG(title,list){ var max=Math.max.apply(null,list.map(function(x){return x.n;}).concat([1]));
+      var bars=list.length?list.slice(0,8).map(function(x){ return '<div class="qbar"><div class="qbar-top"><span class="l" title="'+esc(x.label)+'">'+esc(x.label)+'</span><span class="n">'+x.n+'</span></div><div class="qbar-track"><span style="width:'+Math.max(6,x.n/max*100)+'%"></span></div></div>'; }).join(''):'<div class="empty">Sem qualificados ainda.</div>';
+      return '<div><div class="qb-h">'+title+'</div>'+bars+'</div>'; }
+    q('profile').innerHTML='<div class="card"><div class="card-h">Perfil dos qualificados (A + B) <span class="hint">LP + FORM5 somados · base completa</span></div>'
+      +'<div class="row-3">'+qbBlockG('Cargo',mergeDist(L.qualifCargo,F.qualifCargo))
+      +qbBlockG('Área de atuação',mergeDist(L.qualifArea,F.qualifArea))
+      +qbBlockG('Conhecimento sobre conselho',mergeDist(L.qualifNivel,F.qualifNivel))+'</div></div>';
+  }
+
+  /* ---------- período (UI) ---------- */
+  function periodsHTML(){
+    return PRESETS.map(function(p){return '<button data-k="'+p.k+'" class="pbtn">'+p.label+'</button>';}).join('')
+      +'<span class="daterange" id="leads-daterange"><span class="dr-l">De</span> <input type="date" id="leads-dtDe" min="'+minDate+'" max="'+maxDate+'"> <span class="dr-l">até</span> <input type="date" id="leads-dtAte" min="'+minDate+'" max="'+maxDate+'"></span>';
+  }
+  function syncPeriodUI(){ var rng=rangeFor(period);
+    Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.classList.toggle('on', period===b.getAttribute('data-k')); });
+    var dr=q('daterange'); if(dr) dr.classList.toggle('on', period==='custom');
+    var de=q('dtDe'), ate=q('dtAte'); if(de&&ate){ de.value=rng[0]; ate.value=rng[1]; } }
+  function draw(){ renderPeriod(periodAgg(rangeFor(period), period==='tudo')); }
 
   document.getElementById('tab-leads').innerHTML =
-    '<div class="coverage">Visão geral somando os <b>2 funis</b> (SALA LP + SALA FORM5) · base completa · Leadscore idêntico nos dois · '+intf(total)+' leads no total, '+intf(qualif)+' qualificados (A+B)</div>'
-    + stats + verdict + thermoCard + '<div class="row-2">'+donutCard+srcCard+'</div>' + critCard + profCard;
+    '<div class="coverage">Visão geral somando os <b>2 funis</b> (SALA LP + SALA FORM5) · Leadscore idêntico nos dois · use o filtro de data à direita · <b>Critérios</b> e <b>Perfil</b> são base completa (todos os períodos)</div>'
+    +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Leads · visão geral</div><div class="periods" id="leads-periods"></div></div>'
+    +'<div id="leads-stats"></div><div id="leads-verdict"></div><div id="leads-thermo"></div>'
+    +'<div class="row-2"><div id="leads-qdonut"></div><div id="leads-source"></div></div>'
+    +'<div id="leads-criteria"></div><div id="leads-profile"></div>';
+
+  q('periods').innerHTML=periodsHTML();
+  Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){
+    b.addEventListener('click',function(){ period=b.getAttribute('data-k'); customRange=null; syncPeriodUI(); draw(); }); });
+  var de=q('dtDe'), ate=q('dtAte');
+  function onDate(){ var s=de.value,e=ate.value; if(!s||!e)return; if(s>e){var t=s;s=e;e=t;} if(s<minDate)s=minDate; if(e>maxDate)e=maxDate; customRange=[s,e]; period='custom'; syncPeriodUI(); draw(); }
+  de.addEventListener('change',onDate); ate.addEventListener('change',onDate);
+  renderStatic(); syncPeriodUI(); draw();
 }
 
 /* =================== BOOT =================== */
