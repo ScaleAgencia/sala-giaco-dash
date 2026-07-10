@@ -20,12 +20,19 @@ $LP_LEADS_ID = '1GSk6HrOkVAig5YX98fUNAvFf95t5t6OlN05Svp1fPIY'         # leads da
 $LP_Q_GID = '420969158'    # aba "Sala LP | Meta Ads Queries"
 $LP_L_GID = '407413519'    # leads LP (dentro de LP_LEADS_ID)
 $F5_Q_GID = '1219257520'   # aba "Queries FORM5 | Meta Ads"
-$F5_L_GID = '1377076151'   # aba "SDC - FORM5 - LEADS" (dentro do MASTER)
+$F5_L_GID = '1377076151'   # aba "SDC - FORM5 - LEADS" (leads antigos/retroativos)
+$F5_L2_NAME = 'FORM6-COPY' # aba nova onde caem os novos leads do FORM5 (por nome)
 $TAX = 1.1385              # imposto Meta (+13,85%) aplicado em TODO gasto
 
 # ---- helpers -------------------------------------------------------
 function Get-Sheet($id,$gid,$out){
   $url = "https://docs.google.com/spreadsheets/d/$id/gviz/tq?tqx=out:csv&gid=$gid"
+  Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 120
+  if((Get-Item $out).Length -lt 20){ throw "Download muito pequeno: $out" }
+}
+function Get-SheetNamed($id,$name,$out){
+  $enc=[Uri]::EscapeDataString($name)
+  $url = "https://docs.google.com/spreadsheets/d/$id/gviz/tq?tqx=out:csv&sheet=$enc"
   Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 120
   if((Get-Item $out).Length -lt 20){ throw "Download muito pequeno: $out" }
 }
@@ -76,9 +83,8 @@ function DistArr($h){ $out=@(); foreach($e in ($h.GetEnumerator()|Sort-Object Va
 # =====================================================================
 #  Processa 1 funil (queries + leads) -> objeto com daily/grain/totais
 # =====================================================================
-function Build-Funnel($qCsv,$lCsv,$kind){
+function Build-Funnel($qCsv,$lCsvList,$kind){
   $q=Read-Csv $qCsv; $qh=$q[0]; $qd=$q[1..($q.Count-1)]
-  $l=Read-Csv $lCsv; $lh=$l[0]; $ld=$l[1..($l.Count-1)]
 
   # -- indices das queries (mesmo layout base nos 2; LP tem LPV/video, F5 tem Reach) --
   $Q_DAY=HdrLike $qh 'Day'; $Q_CAMP=HdrLike $qh 'Campaign Name'; $Q_SET=HdrLike $qh 'Ad Set Name'; $Q_AD=HdrLike $qh 'Ad Name'
@@ -107,24 +113,27 @@ function Build-Funnel($qCsv,$lCsv,$kind){
     $g=GNode $d (Field $r $Q_CAMP) (Field $r $Q_SET) (Field $r $Q_AD)
     $g.spend+=$sp;$g.impr+=$im;$g.reach+=$rc;$g.clicks+=$ck;$g.lpv+=$lp;$g.v3+=$v3;$g.v75+=$v75;$g.metaLeads+=$ml }
 
-  # -- indices dos leads (LP = perguntas com acento + UTM ; F5 = underscore + nomes nativos) --
-  if($kind -eq 'lp'){
-    $L_DATE=HdrLike $lh '*Data*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
-    $L_CARGO=HdrLike $lh '*cargo*'; $L_AREA=HdrLike $lh '*tua*'; $L_NIVEL=HdrLike $lh '*conhecimento*'
-    $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'; $L_TAM=HdrLike $lh '*tamanho*'
-    $L_UCAMP=HdrLike $lh '*utm_camp*'; $L_UMED=HdrLike $lh '*utm_medium*'; $L_UCONT=HdrLike $lh '*utm_content*'
-  } else {
-    $L_DATE=HdrLike $lh '*created_time*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
-    $L_CARGO=HdrLike $lh '*cargo*'; $L_AREA=HdrLike $lh '*tua*'; $L_NIVEL=HdrLike $lh '*conhecimento*'
-    $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'; $L_TAM=HdrLike $lh '*tamanho*'
-    $L_FCAMP=HdrLike $lh '*campaign_name*'; $L_FSET=HdrLike $lh '*adset_name*'; $L_FAD=HdrLike $lh '*ad_name*'
-  }
-
   $distCargo=@{}; $distArea=@{}; $distNivel=@{}
   $cntMet=@{ qc=0; qn=0; qi=0; qg=0 }   # quantos leads bateram cada criterio
   $totLeads=0; $tierTot=@{A=0;B=0;C=0;D=0;E=0}; $attributed=0
 
-  foreach($r in $ld){
+  # processa CADA aba de leads do funil (F5 = SDC-FORM5 retroativo + FORM6-COPY novos, somados)
+  foreach($lCsv in $lCsvList){
+   $l=Read-Csv $lCsv; $lh=$l[0]; $ld=$l[1..($l.Count-1)]
+   # -- indices dos leads (por arquivo; LP = perguntas com acento + UTM ; F5 = underscore + nomes nativos) --
+   if($kind -eq 'lp'){
+     $L_DATE=HdrLike $lh '*Data*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
+     $L_CARGO=HdrLike $lh '*cargo*'; $L_AREA=HdrLike $lh '*tua*'; $L_NIVEL=HdrLike $lh '*conhecimento*'
+     $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'; $L_TAM=HdrLike $lh '*tamanho*'
+     $L_UCAMP=HdrLike $lh '*utm_camp*'; $L_UMED=HdrLike $lh '*utm_medium*'; $L_UCONT=HdrLike $lh '*utm_content*'
+   } else {
+     $L_DATE=HdrLike $lh '*created_time*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
+     $L_CARGO=HdrLike $lh '*cargo*'; $L_AREA=HdrLike $lh '*tua*'; $L_NIVEL=HdrLike $lh '*conhecimento*'
+     $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'; $L_TAM=HdrLike $lh '*tamanho*'
+     $L_FCAMP=HdrLike $lh '*campaign_name*'; $L_FSET=HdrLike $lh '*adset_name*'; $L_FAD=HdrLike $lh '*ad_name*'
+   }
+
+   foreach($r in $ld){
     $cargo=Field $r $L_CARGO
     if($cargo -eq '' -and (Field $r $L_NIVEL) -eq '' -and (Field $r $L_MAIL) -eq ''){ continue }  # linha vazia
     if(IsTest $cargo){ continue }
@@ -161,6 +170,7 @@ function Build-Funnel($qCsv,$lCsv,$kind){
       $ak=Field $r $L_AREA;  if($ak -ne ''){ if(-not $distArea.ContainsKey($ak)){$distArea[$ak]=0}; $distArea[$ak]++ }
       $nk=Field $r $L_NIVEL; if($nk -ne ''){ if(-not $distNivel.ContainsKey($nk)){$distNivel[$nk]=0}; $distNivel[$nk]++ }
     }
+   }
   }
 
   $dailyArr=@($daily.Values | Sort-Object date)
@@ -193,18 +203,19 @@ function Build-Funnel($qCsv,$lCsv,$kind){
   }
 }
 
-Write-Host "Baixando 4 planilhas..."
+Write-Host "Baixando planilhas (LP q+leads; FORM5 q + 2 abas de leads)..."
 $qLpCsv=Join-Path $dataDir 'q_lp.csv'; $lLpCsv=Join-Path $dataDir 'leads_lp.csv'
-$qF5Csv=Join-Path $dataDir 'q_f5.csv'; $lF5Csv=Join-Path $dataDir 'leads_f5.csv'
-Get-Sheet $MASTER      $LP_Q_GID $qLpCsv
-Get-Sheet $LP_LEADS_ID $LP_L_GID $lLpCsv
-Get-Sheet $MASTER      $F5_Q_GID $qF5Csv
-Get-Sheet $MASTER      $F5_L_GID $lF5Csv
+$qF5Csv=Join-Path $dataDir 'q_f5.csv'; $lF5Csv=Join-Path $dataDir 'leads_f5.csv'; $lF6Csv=Join-Path $dataDir 'leads_form6.csv'
+Get-Sheet      $MASTER      $LP_Q_GID   $qLpCsv
+Get-Sheet      $LP_LEADS_ID $LP_L_GID   $lLpCsv
+Get-Sheet      $MASTER      $F5_Q_GID   $qF5Csv
+Get-Sheet      $MASTER      $F5_L_GID   $lF5Csv    # SDC-FORM5-LEADS (retroativo)
+Get-SheetNamed $MASTER      $F5_L2_NAME $lF6Csv    # FORM6-COPY (novos leads)
 
 Write-Host "Processando SALA LP..."
-$lp = Build-Funnel $qLpCsv $lLpCsv 'lp'
-Write-Host "Processando SALA FORM5..."
-$f5 = Build-Funnel $qF5Csv $lF5Csv 'f5'
+$lp = Build-Funnel $qLpCsv @($lLpCsv) 'lp'
+Write-Host "Processando SALA FORM5 (SDC-FORM5 retroativo + FORM6-COPY novos)..."
+$f5 = Build-Funnel $qF5Csv @($lF5Csv,$lF6Csv) 'f5'
 
 $nowIso=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 $nowBR =[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'E. South America Standard Time').ToString('dd/MM/yyyy HH:mm')
