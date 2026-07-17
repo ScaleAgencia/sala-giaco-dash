@@ -22,6 +22,7 @@ $LP_L_GID = '407413519'    # leads LP (dentro de LP_LEADS_ID)
 $F5_Q_GID = '1219257520'   # aba "Queries FORM5 | Meta Ads"
 $F5_L_GID = '1377076151'   # aba "SDC - FORM5 - LEADS" (leads antigos/retroativos)
 $F5_L2_NAME = 'FORM6-COPY' # aba nova onde caem os novos leads do FORM5 (por nome)
+$IMR_Q_GID = '1269370345'  # aba "QUERIES | IMERSAO | Meta ads" (funil de VENDAS, sem cruzamento)
 $TAX = 1.1385              # imposto Meta (+13,85%) aplicado em TODO gasto
 
 # ---- helpers -------------------------------------------------------
@@ -203,7 +204,43 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
   }
 }
 
-Write-Host "Baixando planilhas (LP q+leads; FORM5 q + 2 abas de leads)..."
+# =====================================================================
+#  IMERSAO — funil de VENDAS (so queries do gerenciador, sem cruzamento).
+#  Metrica-chave = Purchases (compras). Imposto ×TAX no gasto. Sem leadscore.
+# =====================================================================
+function Build-Sales($qCsv,$kind){
+  $q=Read-Csv $qCsv; $qh=$q[0]; $qd=$q[1..($q.Count-1)]
+  $Q_DAY=HdrLike $qh 'Day'; $Q_CAMP=HdrLike $qh 'Campaign Name'; $Q_SET=HdrLike $qh 'Ad Set Name'; $Q_AD=HdrLike $qh 'Ad Name'
+  $Q_SPEND=HdrLike $qh 'Amount Spent'; $Q_IMP=HdrLike $qh 'Impressions'; $Q_CLK=HdrLike $qh 'Link Clicks'
+  $Q_LPV=HdrLike $qh 'Landing Page Views'; $Q_V3=HdrLike $qh '3-Second Video*'; $Q_PUR=HdrLike $qh 'Purchases'
+
+  $daily=@{}; $grain=@{}
+  function SDay($d){ if(-not $daily.ContainsKey($d)){ $daily[$d]=[pscustomobject]@{date=$d;spend=0.0;impr=0;clicks=0;lpv=0;v3=0;purchases=0} }; return $daily[$d] }
+  function SNode($d,$c,$s,$a){ $k="$d`u$c`u$s`u$a"; if(-not $grain.ContainsKey($k)){ $grain[$k]=[pscustomobject]@{date=$d;campaign=$c;adset=$s;ad=$a;spend=0.0;impr=0;clicks=0;lpv=0;v3=0;purchases=0} }; return $grain[$k] }
+
+  foreach($r in $qd){ $d=DateBR (Field $r $Q_DAY); if($d -eq ''){continue}
+    $sp=(MoneyBR (Field $r $Q_SPEND))*$TAX; $im=ToInt(Field $r $Q_IMP); $ck=ToInt(Field $r $Q_CLK)
+    $lp=ToInt(Field $r $Q_LPV); $v3=ToInt(Field $r $Q_V3); $pu=ToInt(Field $r $Q_PUR)
+    $o=SDay $d; $o.spend+=$sp;$o.impr+=$im;$o.clicks+=$ck;$o.lpv+=$lp;$o.v3+=$v3;$o.purchases+=$pu
+    $g=SNode $d (Field $r $Q_CAMP) (Field $r $Q_SET) (Field $r $Q_AD)
+    $g.spend+=$sp;$g.impr+=$im;$g.clicks+=$ck;$g.lpv+=$lp;$g.v3+=$v3;$g.purchases+=$pu }
+
+  $dailyArr=@($daily.Values | Sort-Object date)
+  $grainArr=@($grain.Values | Where-Object { $_.spend -gt 0 -or $_.purchases -gt 0 } | Sort-Object date)
+  $dates=@($dailyArr | Where-Object { $_.date -match '^\d{4}-\d{2}-\d{2}$' } | ForEach-Object { $_.date } | Sort-Object)
+  $tot=[pscustomobject]@{
+    spend=(($dailyArr|Measure-Object spend -Sum).Sum); impr=(($dailyArr|Measure-Object impr -Sum).Sum)
+    clicks=(($dailyArr|Measure-Object clicks -Sum).Sum); lpv=(($dailyArr|Measure-Object lpv -Sum).Sum)
+    v3=(($dailyArr|Measure-Object v3 -Sum).Sum); purchases=(($dailyArr|Measure-Object purchases -Sum).Sum)
+  }
+  return [pscustomobject]@{
+    kind=$kind
+    dateMin=$(if($dates.Count){$dates[0]}else{''}); dateMax=$(if($dates.Count){$dates[-1]}else{''})
+    totals=$tot; daily=@($dailyArr); grain=@($grainArr)
+  }
+}
+
+Write-Host "Baixando planilhas (LP q+leads; FORM5 q + 2 abas de leads; IMERSAO q)..."
 $qLpCsv=Join-Path $dataDir 'q_lp.csv'; $lLpCsv=Join-Path $dataDir 'leads_lp.csv'
 $qF5Csv=Join-Path $dataDir 'q_f5.csv'; $lF5Csv=Join-Path $dataDir 'leads_f5.csv'; $lF6Csv=Join-Path $dataDir 'leads_form6.csv'
 Get-Sheet      $MASTER      $LP_Q_GID   $qLpCsv
@@ -211,11 +248,15 @@ Get-Sheet      $LP_LEADS_ID $LP_L_GID   $lLpCsv
 Get-Sheet      $MASTER      $F5_Q_GID   $qF5Csv
 Get-Sheet      $MASTER      $F5_L_GID   $lF5Csv    # SDC-FORM5-LEADS (retroativo)
 Get-SheetNamed $MASTER      $F5_L2_NAME $lF6Csv    # FORM6-COPY (novos leads)
+$qImrCsv=Join-Path $dataDir 'q_imersao.csv'
+Get-Sheet      $MASTER      $IMR_Q_GID  $qImrCsv   # QUERIES IMERSAO (funil de vendas)
 
 Write-Host "Processando SALA LP..."
 $lp = Build-Funnel $qLpCsv @($lLpCsv) 'lp'
 Write-Host "Processando SALA FORM5 (SDC-FORM5 retroativo + FORM6-COPY novos)..."
 $f5 = Build-Funnel $qF5Csv @($lF5Csv,$lF6Csv) 'f5'
+Write-Host "Processando IMERSAO (funil de vendas)..."
+$imr = Build-Sales $qImrCsv 'imersao'
 
 $nowIso=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 $nowBR =[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'E. South America Standard Time').ToString('dd/MM/yyyy HH:mm')
@@ -236,10 +277,11 @@ $payload=[pscustomobject]@{
     [pscustomobject]@{tier='D';label='Frio';min=1}
     [pscustomobject]@{tier='E';label='Desqualificado';min=0}
   )
-  lp=$lp; form5=$f5
+  lp=$lp; form5=$f5; imersao=$imr
 }
 $json=$payload | ConvertTo-Json -Depth 12 -Compress
 [IO.File]::WriteAllText((Join-Path $root 'data.js'), ("window.SALA="+$json+";"), $utf8)
-Write-Host ("OK  LP: leads={0} A={1} B={2} spend=R$ {3}  |  FORM5: leads={4} A={5} B={6} spend=R$ {7}" -f `
+Write-Host ("OK  LP: leads={0} A={1} B={2} spend=R$ {3}  |  FORM5: leads={4} A={5} B={6} spend=R$ {7}  |  IMERSAO: vendas={8} spend=R$ {9}" -f `
   $lp.totals.leads,$lp.totals.A,$lp.totals.B,($lp.totals.spend.ToString('N2',$BR)),`
-  $f5.totals.leads,$f5.totals.A,$f5.totals.B,($f5.totals.spend.ToString('N2',$BR)))
+  $f5.totals.leads,$f5.totals.A,$f5.totals.B,($f5.totals.spend.ToString('N2',$BR)),`
+  $imr.totals.purchases,($imr.totals.spend.ToString('N2',$BR)))
