@@ -18,7 +18,10 @@ New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 $MASTER      = '1Uep5K2-fJqBxNX-j8rDa-7V-Q2-iCRlz9S6KzR37VsQ'         # planilha master (queries + leads FORM5 + leadscoring)
 $LP_LEADS_ID = '1GSk6HrOkVAig5YX98fUNAvFf95t5t6OlN05Svp1fPIY'         # leads da landing page (planilha separada)
 $LP_Q_GID = '420969158'    # aba "Sala LP | Meta Ads Queries"
-$LP_L_GID = '407413519'    # leads LP (dentro de LP_LEADS_ID)
+$LP_L_GID = '407413519'    # leads LP antigos/retroativos (dentro de LP_LEADS_ID)
+$LP_L2_ID = '1B3ICzk0JfzAQ2bhfZH_13YpCOctiAXV9jdIQl4Xp_Wk'  # planilha NOVA de leads da LP (form ABI)
+$LP_L2_GID = '510515881'
+$AGENCY_MAIL = 'agenciaup13'  # testes da propria agencia -> NAO contabilizar como lead
 $F5_Q_GID = '1219257520'   # aba "Queries FORM5 | Meta Ads"
 $F5_L_GID = '1377076151'   # aba "SDC - FORM5 - LEADS" (leads antigos/retroativos)
 $F5_L2_NAME = 'FORM6-COPY' # aba nova onde caem os novos leads do FORM5 (por nome)
@@ -77,8 +80,9 @@ function Score($cargo,$nivel,$inter,$cons){
 }
 function Tier($s){ if($s -ge 4){'A'}elseif($s -eq 3){'B'}elseif($s -eq 2){'C'}elseif($s -eq 1){'D'}else{'E'} }
 
-function NewDay($d){ [pscustomobject]@{date=$d;spend=0.0;impr=0;reach=0;clicks=0;lpv=0;v3=0;v75=0;metaLeads=0;leads=0;A=0;B=0;C=0;D=0;E=0} }
-function NewNode($d,$c,$s,$a){ [pscustomobject]@{date=$d;campaign=$c;adset=$s;ad=$a;spend=0.0;impr=0;reach=0;clicks=0;lpv=0;v3=0;v75=0;metaLeads=0;leads=0;A=0;B=0;C=0;D=0;E=0} }
+#  NS = lead do formulario NOVO da LP (nao tem as 4 perguntas do leadscore) -> conta como lead, mas sem nota A-E
+function NewDay($d){ [pscustomobject]@{date=$d;spend=0.0;impr=0;reach=0;clicks=0;lpv=0;v3=0;v75=0;metaLeads=0;leads=0;A=0;B=0;C=0;D=0;E=0;NS=0} }
+function NewNode($d,$c,$s,$a){ [pscustomobject]@{date=$d;campaign=$c;adset=$s;ad=$a;spend=0.0;impr=0;reach=0;clicks=0;lpv=0;v3=0;v75=0;metaLeads=0;leads=0;A=0;B=0;C=0;D=0;E=0;NS=0} }
 function DistArr($h){ $out=@(); foreach($e in ($h.GetEnumerator()|Sort-Object Value -Descending)){ $out+=[pscustomobject]@{label=$e.Key;n=$e.Value} }; return ,@($out) }
 
 # =====================================================================
@@ -116,7 +120,7 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
 
   $distCargo=@{}; $distArea=@{}; $distNivel=@{}
   $cntMet=@{ qc=0; qn=0; qi=0; qg=0 }   # quantos leads bateram cada criterio
-  $totLeads=0; $tierTot=@{A=0;B=0;C=0;D=0;E=0}; $attributed=0
+  $totLeads=0; $tierTot=@{A=0;B=0;C=0;D=0;E=0;NS=0}; $attributed=0
 
   # processa CADA aba de leads do funil (F5 = SDC-FORM5 retroativo + FORM6-COPY novos, somados)
   foreach($lCsv in $lCsvList){
@@ -125,9 +129,20 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
    if($kind -eq 'lp'){
      $L_DATE=HdrLike $lh '*Data*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
      $L_CARGO=HdrLike $lh '*cargo*'; $L_AREA=HdrLike $lh '*tua*'; $L_NIVEL=HdrLike $lh '*conhecimento*'
-     $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'; $L_TAM=HdrLike $lh '*tamanho*'
-     $L_UCAMP=HdrLike $lh '*utm_camp*'; $L_UMED=HdrLike $lh '*utm_medium*'; $L_UCONT=HdrLike $lh '*utm_content*'
+     $L_TAM=HdrLike $lh '*tamanho*'
+     # form ANTIGO tem "conhecimento sobre Conselho Consultivo"; o NOVO (ABI) nao tem as 4 perguntas do leadscore
+     $isOldForm = ($L_NIVEL -ge 0)
+     if($isOldForm){
+       $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'
+       $L_UCAMP=HdrLike $lh '*utm_camp*'; $L_UMED=HdrLike $lh '*utm_medium*'; $L_UCONT=HdrLike $lh '*utm_content*'
+     } else {
+       # NOVO form: nao pontua (perguntas do leadscore nao existem). UTMs vem nas 5 ULTIMAS colunas, SEM cabecalho:
+       # [n-5]=source [n-4]=medium(adset) [n-3]=campaign [n-2]=content(ad) [n-1]=term
+       $L_INT=-1; $L_CONS=-1
+       $n=$lh.Count; $L_UMED=$n-4; $L_UCAMP=$n-3; $L_UCONT=$n-2
+     }
    } else {
+     $isOldForm = $true
      $L_DATE=HdrLike $lh '*created_time*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
      $L_CARGO=HdrLike $lh '*cargo*'; $L_AREA=HdrLike $lh '*tua*'; $L_NIVEL=HdrLike $lh '*conhecimento*'
      $L_INT=HdrLike $lh '*interesse*'; $L_CONS=HdrLike $lh '*oferece*'; $L_TAM=HdrLike $lh '*tamanho*'
@@ -138,12 +153,18 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     $cargo=Field $r $L_CARGO
     if($cargo -eq '' -and (Field $r $L_NIVEL) -eq '' -and (Field $r $L_MAIL) -eq ''){ continue }  # linha vazia
     if(IsTest $cargo){ continue }
+    # testes da propria agencia (agenciaup13@...) NAO contam como lead
+    if((Deaccent (Field $r $L_MAIL)) -match $AGENCY_MAIL){ continue }
     if($kind -eq 'lp'){ $d=DateBR (Field $r $L_DATE) } else { $d=DateIso (Field $r $L_DATE) }
     if($d -eq ''){ $d='sem-data' }
 
-    $sc=Score $cargo (Field $r $L_NIVEL) (Field $r $L_INT) (Field $r $L_CONS); $tier=Tier $sc.s
+    if($isOldForm){
+      $sc=Score $cargo (Field $r $L_NIVEL) (Field $r $L_INT) (Field $r $L_CONS); $tier=Tier $sc.s
+      if($sc.qc){$cntMet.qc++}; if($sc.qn){$cntMet.qn++}; if($sc.qi){$cntMet.qi++}; if($sc.qg){$cntMet.qg++}
+    } else {
+      $tier='NS'   # form novo: conta como lead, mas sem nota A-E (perguntas do leadscore mudaram)
+    }
     $totLeads++; $tierTot[$tier]++
-    if($sc.qc){$cntMet.qc++}; if($sc.qn){$cntMet.qn++}; if($sc.qi){$cntMet.qi++}; if($sc.qg){$cntMet.qg++}
 
     # atribuicao
     if($kind -eq 'lp'){
@@ -184,9 +205,11 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     reach=(($dailyArr|Measure-Object reach -Sum).Sum); clicks=(($dailyArr|Measure-Object clicks -Sum).Sum)
     lpv=(($dailyArr|Measure-Object lpv -Sum).Sum); v3=(($dailyArr|Measure-Object v3 -Sum).Sum); v75=(($dailyArr|Measure-Object v75 -Sum).Sum)
     metaLeads=(($dailyArr|Measure-Object metaLeads -Sum).Sum); leads=$totLeads
-    A=$tierTot.A; B=$tierTot.B; C=$tierTot.C; D=$tierTot.D; E=$tierTot.E; attributed=$attributed
+    A=$tierTot.A; B=$tierTot.B; C=$tierTot.C; D=$tierTot.D; E=$tierTot.E; NS=$tierTot.NS; attributed=$attributed
   }
-  $totLeadsSafe = if($totLeads -gt 0){$totLeads}else{1}
+  # criterios sao % sobre os leads PONTUADOS (exclui os do form novo, que nao tem as perguntas)
+  $scored = $totLeads - $tierTot.NS
+  $totLeadsSafe = if($scored -gt 0){$scored}else{1}
   $criteria=@(
     [pscustomobject]@{label='Cargo de conselheiro';hint='Consultor, Diretor/C-Level ou Mentor';n=$cntMet.qc;pct=[math]::Round($cntMet.qc*100.0/$totLeadsSafe,1)}
     [pscustomobject]@{label='Conhece Conselho Consultivo';hint='Basico, Medio ou Avancado';n=$cntMet.qn;pct=[math]::Round($cntMet.qn*100.0/$totLeadsSafe,1)}
@@ -243,16 +266,18 @@ function Build-Sales($qCsv,$kind){
 Write-Host "Baixando planilhas (LP q+leads; FORM5 q + 2 abas de leads; IMERSAO q)..."
 $qLpCsv=Join-Path $dataDir 'q_lp.csv'; $lLpCsv=Join-Path $dataDir 'leads_lp.csv'
 $qF5Csv=Join-Path $dataDir 'q_f5.csv'; $lF5Csv=Join-Path $dataDir 'leads_f5.csv'; $lF6Csv=Join-Path $dataDir 'leads_form6.csv'
+$lLpNewCsv=Join-Path $dataDir 'leads_lp_new.csv'
 Get-Sheet      $MASTER      $LP_Q_GID   $qLpCsv
-Get-Sheet      $LP_LEADS_ID $LP_L_GID   $lLpCsv
+Get-Sheet      $LP_LEADS_ID $LP_L_GID   $lLpCsv     # leads LP antigos (retroativo)
+Get-Sheet      $LP_L2_ID    $LP_L2_GID  $lLpNewCsv  # leads LP novos (form ABI)
 Get-Sheet      $MASTER      $F5_Q_GID   $qF5Csv
 Get-Sheet      $MASTER      $F5_L_GID   $lF5Csv    # SDC-FORM5-LEADS (retroativo)
 Get-SheetNamed $MASTER      $F5_L2_NAME $lF6Csv    # FORM6-COPY (novos leads)
 $qImrCsv=Join-Path $dataDir 'q_imersao.csv'
 Get-Sheet      $MASTER      $IMR_Q_GID  $qImrCsv   # QUERIES IMERSAO (funil de vendas)
 
-Write-Host "Processando SALA LP..."
-$lp = Build-Funnel $qLpCsv @($lLpCsv) 'lp'
+Write-Host "Processando SALA LP (leads antigos retroativo + planilha nova)..."
+$lp = Build-Funnel $qLpCsv @($lLpCsv,$lLpNewCsv) 'lp'
 Write-Host "Processando SALA FORM5 (SDC-FORM5 retroativo + FORM6-COPY novos)..."
 $f5 = Build-Funnel $qF5Csv @($lF5Csv,$lF6Csv) 'f5'
 Write-Host "Processando IMERSAO (funil de vendas)..."
