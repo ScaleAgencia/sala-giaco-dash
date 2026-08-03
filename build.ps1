@@ -25,6 +25,9 @@ $AGENCY_MAIL = 'agenciaup13'  # testes da propria agencia -> NAO contabilizar co
 $F5_Q_GID = '1219257520'   # aba "Queries FORM5 | Meta Ads"
 $F5_L_GID = '1377076151'   # aba "SDC - FORM5 - LEADS" (leads antigos/retroativos)
 $F5_L2_NAME = 'FORM6-COPY' # aba nova onde caem os novos leads do FORM5 (por nome)
+$F7_Q_GID = '1320534268'   # aba "Queries - FORM7" (no MASTER)
+$F7_L_ID  = '1Yzr1EonePlj-9TkdVtkYNxWZB0PR_eq_4vfSnqek9bY'  # planilha "GIACOBELI FORM 7 - Leads"
+$F7_L_GID = '0'
 $IMR_Q_GID = '1269370345'  # aba "QUERIES | IMERSAO | Meta ads" (funil de VENDAS, sem cruzamento)
 $TAX = 1.1385              # imposto Meta (+13,85%) aplicado em TODO gasto
 
@@ -59,6 +62,11 @@ function Deaccent($s){ if($null -eq $s){return ''}; $s=$s.Normalize([Text.Normal
   return $sb.ToString().ToLower().Trim() }
 # dd/mm/yyyy (com ou sem ", HH:MM:SS") -> yyyy-mm-dd
 function DateBR($s){ $s=Norm $s; if($s -match '(\d{2})[/-](\d{2})[/-](\d{4})'){ return "$($Matches[3])-$($Matches[2])-$($Matches[1])" }; return '' }
+# Day das queries: aceita yyyy-mm-dd OU dd/mm/yyyy (FORM7 vem em ISO; os demais em dd/mm/yyyy)
+function QDate($s){ $s=Norm $s
+  if($s -match '^(\d{4})-(\d{2})-(\d{2})'){ return "$($Matches[1])-$($Matches[2])-$($Matches[3])" }
+  if($s -match '(\d{2})[/-](\d{2})[/-](\d{4})'){ return "$($Matches[3])-$($Matches[2])-$($Matches[1])" }
+  return '' }
 # ISO "2026-06-18T17:02:12-05:00" -> yyyy-mm-dd
 function DateIso($s){ $s=Norm $s; if($s -match '^(\d{4})-(\d{2})-(\d{2})'){ return "$($Matches[1])-$($Matches[2])-$($Matches[3])" }; return '' }
 function IsTest($s){ return ((Deaccent $s) -match 'test lead|dummy data') }
@@ -79,6 +87,15 @@ function Score($cargo,$nivel,$inter,$cons){
   return [pscustomobject]@{ s=$s; qc=$qc; qn=$qn; qi=$qi; qg=$qg }
 }
 function Tier($s){ if($s -ge 4){'A'}elseif($s -eq 3){'B'}elseif($s -eq 2){'C'}elseif($s -eq 1){'D'}else{'E'} }
+# Leadscore do formulario ABI (FORM7) — vem da pergunta do investimento R$17.500:
+#   A = tem o valor e pronto p/ investir  ·  B = interesse real (precisa entender)  ·  E = sem condicoes
+function ScoreABI($invest){
+  $i=Deaccent $invest
+  if($i -match 'valor_dispon|pronto_para_investir|pronto_pra_investir'){ return 'A' }
+  if($i -match 'interesse_real|preciso_entender'){ return 'B' }
+  if($i -match 'nao_tenho_condic|sem_condic|nao_tenho_como'){ return 'E' }
+  return 'NS'
+}
 
 #  NS = lead do formulario NOVO da LP (nao tem as 4 perguntas do leadscore) -> conta como lead, mas sem nota A-E
 function NewDay($d){ [pscustomobject]@{date=$d;spend=0.0;impr=0;reach=0;clicks=0;lpv=0;v3=0;v75=0;metaLeads=0;leads=0;A=0;B=0;C=0;D=0;E=0;NS=0} }
@@ -111,7 +128,7 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
   $adToSet=@{}; foreach($r in $qd){ $c=Field $r $Q_CAMP; $a=Field $r $Q_AD; $s=Field $r $Q_SET; if($a -ne ''){ $adToSet["$c`u$a"]=$s } }
 
   # -- gasto/impressoes por dia+leaf (lado das queries) --
-  foreach($r in $qd){ $d=DateBR (Field $r $Q_DAY); if($d -eq ''){continue}
+  foreach($r in $qd){ $d=QDate (Field $r $Q_DAY); if($d -eq ''){continue}
     $sp=(MoneyBR (Field $r $Q_SPEND))*$TAX; $im=ToInt(Field $r $Q_IMP); $rc=ToInt(Field $r $Q_REACH); $ck=ToInt(Field $r $Q_CLK)
     $lp=ToInt(Field $r $Q_LPV); $v3=ToInt(Field $r $Q_V3); $v75=ToInt(Field $r $Q_V75); $ml=ToInt(Field $r $Q_ML)
     $o=GDay $d; $o.spend+=$sp;$o.impr+=$im;$o.reach+=$rc;$o.clicks+=$ck;$o.lpv+=$lp;$o.v3+=$v3;$o.v75+=$v75;$o.metaLeads+=$ml
@@ -141,6 +158,13 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
        $L_INT=-1; $L_CONS=-1
        $n=$lh.Count; $L_UMED=$n-4; $L_UCAMP=$n-3; $L_UCONT=$n-2
      }
+   } elseif($kind -eq 'f7'){
+     # FORM7 = form ABI nativo. Leadscore vem da pergunta do INVESTIMENTO. Perfil = papel/area/momento.
+     $isOldForm = $false
+     $L_DATE=HdrLike $lh '*created_time*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*phone*'
+     $L_CARGO=HdrLike $lh '*papel*'; $L_AREA=HdrLike $lh '*especialidade*'; $L_NIVEL=HdrLike $lh '*momento_e_interesse*'
+     $L_INVEST=HdrLike $lh '*investimento*'
+     $L_FCAMP=HdrLike $lh '*campaign_name*'; $L_FSET=HdrLike $lh '*adset_name*'; $L_FAD=HdrLike $lh '*ad_name*'
    } else {
      $isOldForm = $true
      $L_DATE=HdrLike $lh '*created_time*'; $L_NAME=HdrLike $lh '*nome*'; $L_MAIL=HdrLike $lh '*email*'; $L_TEL=HdrLike $lh '*telefone*'
@@ -158,11 +182,13 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     if($kind -eq 'lp'){ $d=DateBR (Field $r $L_DATE) } else { $d=DateIso (Field $r $L_DATE) }
     if($d -eq ''){ $d='sem-data' }
 
-    if($isOldForm){
+    if($kind -eq 'f7'){
+      $tier=ScoreABI (Field $r $L_INVEST)   # nota vem da pergunta do investimento (A/B/E)
+    } elseif($isOldForm){
       $sc=Score $cargo (Field $r $L_NIVEL) (Field $r $L_INT) (Field $r $L_CONS); $tier=Tier $sc.s
       if($sc.qc){$cntMet.qc++}; if($sc.qn){$cntMet.qn++}; if($sc.qi){$cntMet.qi++}; if($sc.qg){$cntMet.qg++}
     } else {
-      $tier='NS'   # form novo: conta como lead, mas sem nota A-E (perguntas do leadscore mudaram)
+      $tier='NS'   # form novo LP: conta como lead, mas sem nota A-E (perguntas do leadscore mudaram)
     }
     $totLeads++; $tierTot[$tier]++
 
@@ -217,11 +243,29 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     [pscustomobject]@{label='Deseja ser conselheiro';hint='Interesse em atuar';n=$cntMet.qi;pct=[math]::Round($cntMet.qi*100.0/$totLeadsSafe,1)}
   )
 
+  # metadata de leadscore por funil (FORM7 usa regra propria = pergunta do investimento)
+  $fScoring=$null; $fTiers=$null; $fProfileTitles=$null
+  if($kind -eq 'f7'){
+    $criteria=@()   # FORM7 nao tem os 4 criterios (a nota vem de 1 pergunta) -> esconde o card
+    $fScoring=@(
+      [pscustomobject]@{label='Tem o valor e esta pronto p/ investir';tier='A'}
+      [pscustomobject]@{label='Interesse real, mas precisa entender melhor';tier='B'}
+      [pscustomobject]@{label='Sem condicoes de investir neste momento';tier='E'}
+    )
+    $fTiers=@(
+      [pscustomobject]@{tier='A';label='Pronto p/ investir';desc='tem o valor'}
+      [pscustomobject]@{tier='B';label='Interesse real';desc='precisa entender'}
+      [pscustomobject]@{tier='E';label='Sem condicoes';desc='nao pode agora'}
+    )
+    $fProfileTitles=@('Papel profissional','Area de especialidade','Momento & interesse')
+  }
+
   return [pscustomobject]@{
-    kind=$kind; hasLPV=($kind -eq 'lp'); hasReach=($kind -eq 'f5'); hasVideo=($kind -eq 'lp')
+    kind=$kind; hasLPV=($kind -eq 'lp'); hasReach=($kind -eq 'f5' -or $kind -eq 'f7'); hasVideo=($kind -eq 'lp')
     dateMin=$(if($dates.Count){$dates[0]}else{''}); dateMax=$(if($dates.Count){$dates[-1]}else{''})
     leadDateMin=$(if($ldDates.Count){$ldDates[0]}else{''}); leadDateMax=$(if($ldDates.Count){$ldDates[-1]}else{''})
-    totals=$tot; criteria=@($criteria)
+    totals=$tot; criteria=@($criteria); scoring=$fScoring; tiers=$fTiers; profileTitles=$fProfileTitles
+    scoreSource=$(if($kind -eq 'f7'){'invest'}else{''})
     qualifCargo=(DistArr $distCargo); qualifArea=(DistArr $distArea); qualifNivel=(DistArr $distNivel)
     daily=@($dailyArr); grain=@($grainArr)
   }
@@ -241,7 +285,7 @@ function Build-Sales($qCsv,$kind){
   function SDay($d){ if(-not $daily.ContainsKey($d)){ $daily[$d]=[pscustomobject]@{date=$d;spend=0.0;impr=0;clicks=0;lpv=0;v3=0;purchases=0} }; return $daily[$d] }
   function SNode($d,$c,$s,$a){ $k="$d`u$c`u$s`u$a"; if(-not $grain.ContainsKey($k)){ $grain[$k]=[pscustomobject]@{date=$d;campaign=$c;adset=$s;ad=$a;spend=0.0;impr=0;clicks=0;lpv=0;v3=0;purchases=0} }; return $grain[$k] }
 
-  foreach($r in $qd){ $d=DateBR (Field $r $Q_DAY); if($d -eq ''){continue}
+  foreach($r in $qd){ $d=QDate (Field $r $Q_DAY); if($d -eq ''){continue}
     $sp=(MoneyBR (Field $r $Q_SPEND))*$TAX; $im=ToInt(Field $r $Q_IMP); $ck=ToInt(Field $r $Q_CLK)
     $lp=ToInt(Field $r $Q_LPV); $v3=ToInt(Field $r $Q_V3); $pu=ToInt(Field $r $Q_PUR)
     $o=SDay $d; $o.spend+=$sp;$o.impr+=$im;$o.clicks+=$ck;$o.lpv+=$lp;$o.v3+=$v3;$o.purchases+=$pu
@@ -273,6 +317,9 @@ Get-Sheet      $LP_L2_ID    $LP_L2_GID  $lLpNewCsv  # leads LP novos (form ABI)
 Get-Sheet      $MASTER      $F5_Q_GID   $qF5Csv
 Get-Sheet      $MASTER      $F5_L_GID   $lF5Csv    # SDC-FORM5-LEADS (retroativo)
 Get-SheetNamed $MASTER      $F5_L2_NAME $lF6Csv    # FORM6-COPY (novos leads)
+$qF7Csv=Join-Path $dataDir 'q_form7.csv'; $lF7Csv=Join-Path $dataDir 'leads_form7.csv'
+Get-Sheet      $MASTER      $F7_Q_GID   $qF7Csv    # Queries FORM7
+Get-Sheet      $F7_L_ID     $F7_L_GID   $lF7Csv    # GIACOBELI FORM 7 - Leads
 $qImrCsv=Join-Path $dataDir 'q_imersao.csv'
 Get-Sheet      $MASTER      $IMR_Q_GID  $qImrCsv   # QUERIES IMERSAO (funil de vendas)
 
@@ -280,6 +327,8 @@ Write-Host "Processando SALA LP (leads antigos retroativo + planilha nova)..."
 $lp = Build-Funnel $qLpCsv @($lLpCsv,$lLpNewCsv) 'lp'
 Write-Host "Processando SALA FORM5 (SDC-FORM5 retroativo + FORM6-COPY novos)..."
 $f5 = Build-Funnel $qF5Csv @($lF5Csv,$lF6Csv) 'f5'
+Write-Host "Processando FORM7 (form ABI, leadscore pelo investimento)..."
+$f7 = Build-Funnel $qF7Csv @($lF7Csv) 'f7'
 Write-Host "Processando IMERSAO (funil de vendas)..."
 $imr = Build-Sales $qImrCsv 'imersao'
 
@@ -302,11 +351,12 @@ $payload=[pscustomobject]@{
     [pscustomobject]@{tier='D';label='Frio';min=1}
     [pscustomobject]@{tier='E';label='Desqualificado';min=0}
   )
-  lp=$lp; form5=$f5; imersao=$imr
+  lp=$lp; form5=$f5; form7=$f7; imersao=$imr
 }
 $json=$payload | ConvertTo-Json -Depth 12 -Compress
 [IO.File]::WriteAllText((Join-Path $root 'data.js'), ("window.SALA="+$json+";"), $utf8)
-Write-Host ("OK  LP: leads={0} A={1} B={2} spend=R$ {3}  |  FORM5: leads={4} A={5} B={6} spend=R$ {7}  |  IMERSAO: vendas={8} spend=R$ {9}" -f `
-  $lp.totals.leads,$lp.totals.A,$lp.totals.B,($lp.totals.spend.ToString('N2',$BR)),`
-  $f5.totals.leads,$f5.totals.A,$f5.totals.B,($f5.totals.spend.ToString('N2',$BR)),`
+Write-Host ("OK  LP: leads={0} A={1} B={2}  |  FORM5: leads={3} A={4} B={5}  |  FORM7: leads={6} A={7} B={8} E={9}  |  IMERSAO: vendas={10} spend=R$ {11}" -f `
+  $lp.totals.leads,$lp.totals.A,$lp.totals.B,`
+  $f5.totals.leads,$f5.totals.A,$f5.totals.B,`
+  $f7.totals.leads,$f7.totals.A,$f7.totals.B,$f7.totals.E,`
   $imr.totals.purchases,($imr.totals.spend.ToString('N2',$BR)))

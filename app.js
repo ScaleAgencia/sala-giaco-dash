@@ -267,21 +267,28 @@ function Funnel(key, fd){
       +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#1d2740" stroke-width="'+sw+'"/>'
       +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 '+cx+' '+cx+')"/></svg>'
       +'<div class="gauge-num"><span class="g-val" style="color:'+color+'">'+cv+'</span><span class="g-lab" style="color:'+color+'">'+cl+'</span></div></div>'; }
+  var TMETA = (fd.tiers && arr(fd.tiers).length) ? arr(fd.tiers) : arr(D.tiers);
+  var SMETA = (fd.scoring && arr(fd.scoring).length) ? arr(fd.scoring) : arr(D.scoring);
+  var PTITLES = (fd.profileTitles && arr(fd.profileTitles).length) ? arr(fd.profileTitles) : ['Cargo','Área de atuação','Conhecimento sobre conselho'];
   function renderScore(a){
     var qy=a.A+a.B, total=a.leads, qFrac=dv(qy,total);
     q('scoreGauge').innerHTML=donut(qFrac,'#e8b64a',total?pct(qFrac*100):'—','qualif A+B',150);
-    var tiers=[['A','Quente',a.A],['B','Morno',a.B],['C','Médio',a.C],['D','Frio',a.D],['E','Desq.',a.E]];
+    var tiers=TMETA.map(function(t){ return [t.tier, t.label, a[t.tier]||0]; });
     var maxT=Math.max.apply(null,tiers.map(function(t){return t[2];}).concat([1]));
     q('scoreBars').innerHTML=tiers.map(function(t){ var w=t[2]>0?Math.max(4,t[2]/maxT*100):0;
-      return '<div class="hl-row"><span class="hl-k"><b style="color:'+TC[t[0]]+'">'+t[0]+'</b> '+t[1]+'</span><span class="hl-bar"><span style="width:'+w+'%;background:'+TC[t[0]]+'"></span></span><span class="hl-v">'+intf(t[2])+(total?' · '+pct(dv(t[2],total)*100):'')+'</span></div>'; }).join('');
-    q('scoringRules').innerHTML=arr(D.scoring).map(function(s){ var pos=s.pts>=0; return '<div class="rule"><span>'+esc(s.label)+'</span><span class="pts '+(pos?'pos':'neg')+'">'+(pos?'+':'')+s.pts+'</span></div>'; }).join('');
-    q('tierRules').innerHTML='<div class="tier-rules">'+arr(D.tiers).map(function(t){ var col=TC[t.tier];
-      var rng=(t.tier==='A')?'4/4':(t.tier==='E')?'0/4':(t.min+'/4');
-      return '<div class="tier-chip"><div class="t" style="color:'+col+'">'+t.tier+'</div><div class="l">'+t.label+'</div><div class="r">'+rng+'</div></div>'; }).join('')+'</div>';
-    // critérios (base completa)
-    q('criteria').innerHTML=arr(fd.criteria).map(function(cr){ var w=Math.max(3,cr.pct);
+      return '<div class="hl-row"><span class="hl-k"><b style="color:'+TC[t[0]]+'">'+t[0]+'</b> '+esc(t[1])+'</span><span class="hl-bar"><span style="width:'+w+'%;background:'+TC[t[0]]+'"></span></span><span class="hl-v">'+intf(t[2])+(total?' · '+pct(dv(t[2],total)*100):'')+'</span></div>'; }).join('');
+    q('scoringRules').innerHTML=SMETA.map(function(s){
+      if(s.tier){ return '<div class="rule"><span>'+esc(s.label)+'</span><span class="pts" style="background:'+TC[s.tier]+'22;color:'+TC[s.tier]+'">nota '+s.tier+'</span></div>'; }
+      var pos=s.pts>=0; return '<div class="rule"><span>'+esc(s.label)+'</span><span class="pts '+(pos?'pos':'neg')+'">'+(pos?'+':'')+s.pts+'</span></div>'; }).join('');
+    q('tierRules').innerHTML='<div class="tier-rules">'+TMETA.map(function(t){ var col=TC[t.tier];
+      var rng = t.desc ? esc(t.desc) : ((t.tier==='A')?'4/4':(t.tier==='E')?'0/4':(t.min+'/4'));
+      return '<div class="tier-chip"><div class="t" style="color:'+col+'">'+t.tier+'</div><div class="l">'+esc(t.label)+'</div><div class="r">'+rng+'</div></div>'; }).join('')+'</div>';
+    // critérios (base completa) — esconde o card se o funil não usa os 4 critérios (ex.: FORM7)
+    var crit=arr(fd.criteria), critCard=q('criteria').parentNode;
+    if(critCard) critCard.style.display = crit.length ? '' : 'none';
+    q('criteria').innerHTML=crit.map(function(cr){ var w=Math.max(3,cr.pct);
       return '<div class="crit"><div class="crit-top"><span class="cl">'+esc(cr.label)+'<small>'+esc(cr.hint)+'</small></span><span class="cn">'+intf(cr.n)+' <small>('+pct(cr.pct)+')</small></span></div><div class="crit-track"><span style="width:'+w+'%"></span></div></div>'; }).join('');
-    q('qualifBreak').innerHTML=qbBlock('Cargo',arr(fd.qualifCargo))+qbBlock('Área de atuação',arr(fd.qualifArea))+qbBlock('Conhecimento sobre conselho',arr(fd.qualifNivel));
+    q('qualifBreak').innerHTML=qbBlock(PTITLES[0],arr(fd.qualifCargo))+qbBlock(PTITLES[1],arr(fd.qualifArea))+qbBlock(PTITLES[2],arr(fd.qualifNivel));
     renderAdRank(rangeFor(period));
   }
   function qbBlock(title,list){ var max=Math.max.apply(null,list.map(function(x){return x.n;}).concat([1]));
@@ -341,7 +348,7 @@ function Funnel(key, fd){
       +'<div class="panel-sub hidden" id="'+key+'-score">'
         +'<div class="row-2">'
           +'<div class="card"><div class="card-h">Distribuição por Leadscore <span class="hint">no período</span></div><div class="score-body"><div id="'+key+'-scoreGauge"></div><div id="'+key+'-scoreBars" style="flex:1"></div></div></div>'
-          +'<div class="card"><div class="card-h">Como o Leadscore é calculado <span class="hint">+1 por critério · 4 perguntas</span></div><div id="'+key+'-scoringRules"></div><div id="'+key+'-tierRules"></div></div>'
+          +'<div class="card"><div class="card-h">Como o Leadscore é calculado <span class="hint">'+(fd.scoreSource==='invest'?'nota vem da resposta sobre o investimento':'+1 por critério · 4 perguntas')+'</span></div><div id="'+key+'-scoringRules"></div><div id="'+key+'-tierRules"></div></div>'
         +'</div>'
         +'<div class="card"><div class="card-h">Critérios de qualificação <span class="hint">quantos leads atendem cada pergunta · base completa</span></div><div id="'+key+'-criteria"></div></div>'
         +'<div class="card"><div class="card-h">Quem são os Qualificados (A + B) <span class="hint">perfil dos leads quentes/mornos · base completa</span></div><div class="row-3" id="'+key+'-qualifBreak"></div></div>'
@@ -691,9 +698,9 @@ el('taxf').textContent = nf4.format(D.taxMultiplier||1.1385);
 if(!D.lp && !D.form5){
   el('tab-lp').innerHTML='<div class="coverage"><b>Sem dados.</b> Rode o build.ps1 para gerar o data.js.</div>';
 } else {
-  var funnels={ lp:new Funnel('lp', D.lp||{}), f5:new Funnel('f5', D.form5||{}) };
-  funnels.lp.mount(); funnels.f5.mount(); mountImersao(); mountLeads();
-  var TABS=['lp','f5','imersao','leads'];
+  var funnels={ lp:new Funnel('lp', D.lp||{}), f5:new Funnel('f5', D.form5||{}), f7:new Funnel('f7', D.form7||{}) };
+  funnels.lp.mount(); funnels.f5.mount(); funnels.f7.mount(); mountImersao(); mountLeads();
+  var TABS=['lp','f5','f7','imersao','leads'];
   function activateTab(id){ if(TABS.indexOf(id)<0)id='lp'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
     TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
   function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t])funnels[t].showSub(parts[1]); }
