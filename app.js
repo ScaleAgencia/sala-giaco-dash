@@ -22,7 +22,7 @@ function inRange(dt,r){ return dt>=r[0] && dt<=r[1]; }
 /* limpa rótulos underscore/minúsculo dos forms nativos p/ exibição */
 function prettify(s){ if(s==null) return ''; s=String(s).replace(/_/g,' ').replace(/\s*\/\s*/g,' / ').replace(/\s+/g,' ').trim();
   if(s==='') return ''; return s.split(' ').map(function(w){ return w ? w.charAt(0).toUpperCase()+w.slice(1) : w; }).join(' '); }
-var TC={A:'#e8b64a',B:'#34d3b0',C:'#5b9bf0',D:'#8b93a7',E:'#4a5169'};
+var TC={A:'#10b981',B:'#84cc16',C:'#eab308',D:'#f97316',E:'#ef4444'};
 
 var PRESETS = [
   {k:'hoje',label:'Hoje'},{k:'ontem',label:'Ontem'},{k:'7d',label:'7 dias'},
@@ -48,7 +48,7 @@ function trendHTML(cur, prev, higherBetter){
 /* donut reutilizável (nível de módulo) */
 function donutHTML(frac,color,cv,cl,size){ size=size||160; var sw=15,r=(size-sw)/2,cx=size/2,c=2*Math.PI*r,off=c*(1-clamp(frac));
   return '<div class="gauge" style="width:'+size+'px;height:'+size+'px"><svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'
-    +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#1d2740" stroke-width="'+sw+'"/>'
+    +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#edeff7" stroke-width="'+sw+'"/>'
     +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 '+cx+' '+cx+')"/></svg>'
     +'<div class="gauge-num"><span class="g-val" style="color:'+color+'">'+cv+'</span><span class="g-lab" style="color:'+color+'">'+cl+'</span></div></div>'; }
 /* funde distribuições de perfil de LP + FORM5 por rótulo normalizado */
@@ -161,15 +161,15 @@ function Funnel(key, fd){
     var maxL=Math.max.apply(null,days.map(function(d){return d.leads||0;}).concat([1]));
     var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(13,gw*0.34));
     var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
-    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#1f2942" stroke-dasharray="2 3"/>'; s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#616b85" font-size="9">'+Math.round(maxL*f)+'</text>'; });
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/>'; s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+Math.round(maxL*f)+'</text>'; });
     days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, lh=ph*dv(d.leads,maxL), qh=ph*dv((d.A+d.B),maxL);
-      if(d.leads>0) s+='<rect x="'+(xc-bw-1).toFixed(1)+'" y="'+(base-lh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+lh.toFixed(1)+'" rx="1.5" fill="rgba(139,149,173,.45)"/>';
+      if(d.leads>0) s+='<rect x="'+(xc-bw-1).toFixed(1)+'" y="'+(base-lh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+lh.toFixed(1)+'" rx="1.5" fill="rgba(180,187,214,.6)"/>';
       if((d.A+d.B)>0) s+='<rect x="'+(xc+1).toFixed(1)+'" y="'+(base-qh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+qh.toFixed(1)+'" rx="1.5" fill="url(#'+key+'g1)"/>';
     });
-    s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="'+key+'g1" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#34d3b0"/><stop offset="1" stop-color="#e8b64a"/></linearGradient></defs>'+s.slice(s.indexOf('>')+1);
-    xticks(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#616b85" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="'+key+'g1" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#a3e635"/></linearGradient></defs>'+s.slice(s.indexOf('>')+1);
+    xticks(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
     s+=hitRects(days,pl,gw,pt,ph)+'</svg>';
-    q('chartLeads').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(139,149,173,.6)"></span>Leads</span><span><span class="dot" style="background:var(--gold)"></span>Qualificados (A+B)</span></div>';
+    q('chartLeads').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(180,187,214,.7)"></span>Leads</span><span><span class="dot" style="background:var(--gold)"></span>Qualificados (A+B)</span></div>';
     bindHits('chartLeads',days,tipLeads);
   }
   function renderChartInvest(days){
@@ -179,17 +179,17 @@ function Funnel(key, fd){
     var maxC=Math.max.apply(null,cpls.filter(function(x){return x!=null;}).concat([1]));
     var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(15,gw*0.55));
     var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
-    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#1f2942" stroke-dasharray="2 3"/>';
-      s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#616b85" font-size="9">'+Math.round(maxS*f)+'</text>';
-      s+='<text x="'+(W-pr+4)+'" y="'+(y+3)+'" text-anchor="start" fill="#34d3b0" font-size="9">'+Math.round(maxC*f)+'</text>'; });
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/>';
+      s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+Math.round(maxS*f)+'</text>';
+      s+='<text x="'+(W-pr+4)+'" y="'+(y+3)+'" text-anchor="start" fill="#f59e0b" font-size="9">'+Math.round(maxC*f)+'</text>'; });
     days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, sh=ph*dv(d.spend,maxS);
-      if(d.spend>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-sh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+sh.toFixed(1)+'" rx="1.5" fill="rgba(232,182,74,.34)"/>'; });
+      if(d.spend>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-sh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+sh.toFixed(1)+'" rx="1.5" fill="rgba(91,91,214,.3)"/>'; });
     var pts=[]; days.forEach(function(d,i){ if(cpls[i]!=null){ var xc=pl+gw*i+gw/2, y=base-ph*dv(cpls[i],maxC); pts.push([xc,y]); } });
-    if(pts.length>1){ var dpath='M'+pts.map(function(pp){return pp[0].toFixed(1)+' '+pp[1].toFixed(1);}).join(' L'); s+='<path d="'+dpath+'" fill="none" stroke="#34d3b0" stroke-width="2"/>'; }
-    pts.forEach(function(pp){ s+='<circle cx="'+pp[0].toFixed(1)+'" cy="'+pp[1].toFixed(1)+'" r="2.6" fill="#34d3b0"/>'; });
-    xticks(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#616b85" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    if(pts.length>1){ var dpath='M'+pts.map(function(pp){return pp[0].toFixed(1)+' '+pp[1].toFixed(1);}).join(' L'); s+='<path d="'+dpath+'" fill="none" stroke="#f59e0b" stroke-width="2"/>'; }
+    pts.forEach(function(pp){ s+='<circle cx="'+pp[0].toFixed(1)+'" cy="'+pp[1].toFixed(1)+'" r="2.6" fill="#f59e0b"/>'; });
+    xticks(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
     s+=hitRects(days,pl,gw,pt,ph)+'</svg>';
-    q('chartInvest').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(232,182,74,.5)"></span>Investimento</span><span><span class="ln" style="background:#34d3b0"></span>CPL Qualificado</span></div>';
+    q('chartInvest').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(91,91,214,.5)"></span>Investimento</span><span><span class="ln" style="background:#f59e0b"></span>CPL Qualificado</span></div>';
     bindHits('chartInvest',days,tipInvest);
   }
 
@@ -204,13 +204,13 @@ function Funnel(key, fd){
     var body=rows.map(function(r){
       var qy=r.A+r.B, taxaQ=dv(qy,r.leads)*100, cplQ=qy>0?dv(r.spend,qy):null, cpm=dv(r.spend,r.impr)*1000, midv=CFG.reach?r.reach:r.lpv;
       return '<tr><td>'+fmtBR(r.date)+'</td>'
-        +'<td class="num"><span class="heatcell" style="'+heatBg('232,182,74',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
-        +'<td class="num"><span class="heatcell" style="'+heatBg('91,155,240',midv/maxM)+'">'+intf(midv)+'</span></td>'
-        +'<td class="num"><span class="heatcell" style="'+heatBg('139,149,173',r.leads/maxL)+'">'+intf(r.leads)+'</span></td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('91,91,214',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('59,130,246',midv/maxM)+'">'+intf(midv)+'</span></td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('148,163,184',r.leads/maxL)+'">'+intf(r.leads)+'</span></td>'
         +'<td class="num">'+(r.A?'<span class="pillA">'+r.A+'</span>':'·')+'</td>'
         +'<td class="num">'+(r.B?'<span class="pillB">'+r.B+'</span>':'·')+'</td>'
-        +'<td class="num"><span class="heatcell" style="'+heatBg('52,211,176',qy/maxQ)+'">'+(qy||'·')+'</span></td>'
-        +'<td class="num">'+(r.leads?'<span class="heatcell" style="'+heatBg('52,211,176',taxaQ/100)+'">'+pct(taxaQ)+'</span>':'—')+'</td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('16,185,129',qy/maxQ)+'">'+(qy||'·')+'</span></td>'
+        +'<td class="num">'+(r.leads?'<span class="heatcell" style="'+heatBg('16,185,129',taxaQ/100)+'">'+pct(taxaQ)+'</span>':'—')+'</td>'
         +'<td class="num">'+(cplQ!=null?'<span class="cpl-pill '+cplClass(cplQ,60,150)+'">'+money0(cplQ)+'</span>':'—')+'</td>'
         +'<td class="num">'+money(cpm)+'</td></tr>';
     }).join('');
@@ -264,7 +264,7 @@ function Funnel(key, fd){
   /* ---------- LEADSCORE ---------- */
   function donut(frac,color,cv,cl,size){ size=size||150; var sw=14,r=(size-sw)/2,cx=size/2,c=2*Math.PI*r,off=c*(1-clamp(frac));
     return '<div class="gauge" style="width:'+size+'px;height:'+size+'px"><svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'
-      +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#1d2740" stroke-width="'+sw+'"/>'
+      +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#edeff7" stroke-width="'+sw+'"/>'
       +'<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 '+cx+' '+cx+')"/></svg>'
       +'<div class="gauge-num"><span class="g-val" style="color:'+color+'">'+cv+'</span><span class="g-lab" style="color:'+color+'">'+cl+'</span></div></div>'; }
   var TMETA = (fd.tiers && arr(fd.tiers).length) ? arr(fd.tiers) : arr(D.tiers);
@@ -272,7 +272,7 @@ function Funnel(key, fd){
   var PTITLES = (fd.profileTitles && arr(fd.profileTitles).length) ? arr(fd.profileTitles) : ['Cargo','Área de atuação','Conhecimento sobre conselho'];
   function renderScore(a){
     var qy=a.A+a.B, total=a.leads, qFrac=dv(qy,total);
-    q('scoreGauge').innerHTML=donut(qFrac,'#e8b64a',total?pct(qFrac*100):'—','qualif A+B',150);
+    q('scoreGauge').innerHTML=donut(qFrac,'#10b981',total?pct(qFrac*100):'—','qualif A+B',150);
     var tiers=TMETA.map(function(t){ return [t.tier, t.label, a[t.tier]||0]; });
     var maxT=Math.max.apply(null,tiers.map(function(t){return t[2];}).concat([1]));
     q('scoreBars').innerHTML=tiers.map(function(t){ var w=t[2]>0?Math.max(4,t[2]/maxT*100):0;
@@ -442,11 +442,11 @@ function mountImersao(){
     var W=600,H=210,pl=30,pr=10,pt=12,pb=22,pw=W-pl-pr,ph=H-pt-pb,base=pt+ph;
     var maxV=Math.max.apply(null,days.map(function(d){return d.purchases||0;}).concat([1]));
     var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(15,gw*0.5));
-    var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="imrg1" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2aa88c"/><stop offset="1" stop-color="#34d3b0"/></linearGradient></defs>';
-    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#1f2942" stroke-dasharray="2 3"/>'; s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#616b85" font-size="9">'+Math.round(maxV*f)+'</text>'; });
+    var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="imrg1" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#a3e635"/></linearGradient></defs>';
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/>'; s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+Math.round(maxV*f)+'</text>'; });
     days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, vh=ph*dv(d.purchases,maxV);
       if(d.purchases>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-vh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+vh.toFixed(1)+'" rx="1.5" fill="url(#imrg1)"/>'; });
-    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#616b85" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
     s+=hitRectsM(days,pl,gw,pt,ph)+'</svg>';
     q('chartSales').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:var(--teal)"></span>Vendas por dia</span></div>';
     bindHitsM(q('chartSales'),days,tipSales);
@@ -458,17 +458,17 @@ function mountImersao(){
     var maxC=Math.max.apply(null,cpas.filter(function(x){return x!=null;}).concat([1]));
     var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(15,gw*0.55));
     var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
-    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#1f2942" stroke-dasharray="2 3"/>';
-      s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#616b85" font-size="9">'+Math.round(maxS*f)+'</text>';
-      s+='<text x="'+(W-pr+4)+'" y="'+(y+3)+'" text-anchor="start" fill="#34d3b0" font-size="9">'+Math.round(maxC*f)+'</text>'; });
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/>';
+      s+='<text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+Math.round(maxS*f)+'</text>';
+      s+='<text x="'+(W-pr+4)+'" y="'+(y+3)+'" text-anchor="start" fill="#f59e0b" font-size="9">'+Math.round(maxC*f)+'</text>'; });
     days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, sh=ph*dv(d.spend,maxS);
-      if(d.spend>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-sh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+sh.toFixed(1)+'" rx="1.5" fill="rgba(232,182,74,.34)"/>'; });
+      if(d.spend>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-sh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+sh.toFixed(1)+'" rx="1.5" fill="rgba(91,91,214,.3)"/>'; });
     var pts=[]; days.forEach(function(d,i){ if(cpas[i]!=null){ var xc=pl+gw*i+gw/2, y=base-ph*dv(cpas[i],maxC); pts.push([xc,y]); } });
-    if(pts.length>1){ var dpath='M'+pts.map(function(pp){return pp[0].toFixed(1)+' '+pp[1].toFixed(1);}).join(' L'); s+='<path d="'+dpath+'" fill="none" stroke="#34d3b0" stroke-width="2"/>'; }
-    pts.forEach(function(pp){ s+='<circle cx="'+pp[0].toFixed(1)+'" cy="'+pp[1].toFixed(1)+'" r="2.6" fill="#34d3b0"/>'; });
-    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#616b85" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    if(pts.length>1){ var dpath='M'+pts.map(function(pp){return pp[0].toFixed(1)+' '+pp[1].toFixed(1);}).join(' L'); s+='<path d="'+dpath+'" fill="none" stroke="#f59e0b" stroke-width="2"/>'; }
+    pts.forEach(function(pp){ s+='<circle cx="'+pp[0].toFixed(1)+'" cy="'+pp[1].toFixed(1)+'" r="2.6" fill="#f59e0b"/>'; });
+    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
     s+=hitRectsM(days,pl,gw,pt,ph)+'</svg>';
-    q('chartInvest').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(232,182,74,.5)"></span>Investimento</span><span><span class="ln" style="background:#34d3b0"></span>CPA</span></div>';
+    q('chartInvest').innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(91,91,214,.5)"></span>Investimento</span><span><span class="ln" style="background:#f59e0b"></span>CPA</span></div>';
     bindHitsM(q('chartInvest'),days,tipInvest);
   }
 
@@ -480,9 +480,9 @@ function mountImersao(){
     var head='<thead><tr><th>Dia</th><th>Gasto</th><th>Impr.</th><th>Cliques</th><th>LPV</th><th>Vendas</th><th>CPA</th><th>Conv LP→Venda</th><th>CPM</th></tr></thead>';
     var body=rows.map(function(r){ var cpa=r.purchases>0?dv(r.spend,r.purchases):null, conv=dv(r.purchases,r.lpv)*100, cpm=dv(r.spend,r.impr)*1000;
       return '<tr><td>'+fmtBR(r.date)+'</td>'
-        +'<td class="num"><span class="heatcell" style="'+heatBg('232,182,74',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('91,91,214',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
         +'<td class="num">'+intf(r.impr)+'</td><td class="num">'+intf(r.clicks)+'</td><td class="num">'+intf(r.lpv)+'</td>'
-        +'<td class="num"><span class="heatcell" style="'+heatBg('52,211,176',r.purchases/maxV)+'">'+(r.purchases||'·')+'</span></td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('16,185,129',r.purchases/maxV)+'">'+(r.purchases||'·')+'</span></td>'
         +'<td class="num">'+(cpa!=null?'<span class="cpl-pill '+cpaClass(cpa)+'">'+money0(cpa)+'</span>':'—')+'</td>'
         +'<td class="num">'+(r.lpv?pct(conv):'—')+'</td>'
         +'<td class="num">'+money(cpm)+'</td></tr>';
@@ -610,7 +610,7 @@ function mountLeads(){
       q('thermo').innerHTML=''; q('qdonut').innerHTML=''; q('source').innerHTML=''; return; }
 
     q('verdict').innerHTML='<div class="verdict'+(isGood?'':' bad')+'">'
-      +donutHTML(dv(qualif,total),isGood?'#e8b64a':'#f2637b',pct(qPct),'qualif A+B',132)
+      +donutHTML(dv(qualif,total),isGood?'#10b981':'#ef4444',pct(qPct),'qualif A+B',132)
       +'<div class="v-txt"><div class="v-tag">Veredito geral · LP + FORM5</div>'
       +'<div class="v-head">A maioria dos seus leads '+(isGood?'é <span class="hi">QUALIFICADA</span>':'ainda <span class="hi">NÃO é qualificada</span>')+'</div>'
       +'<div class="v-sub"><b style="color:var(--ink2)">'+intf(qualif)+'</b> de <b style="color:var(--ink2)">'+intf(total)+'</b> leads ('+pct(qPct)+') são Leadscore <b style="color:var(--A)">A</b> ou <b style="color:var(--B)">B</b> — cargo/interesse de conselheiro. '
@@ -627,7 +627,7 @@ function mountLeads(){
       +'<div class="thermo-wrap">'+thermo+'</div>'+thLegend+thSplit+'</div>';
 
     q('qdonut').innerHTML='<div class="card"><div class="card-h">Qualificado vs Não-qualificado <span class="hint">no período</span></div>'
-      +'<div class="score-body"><div>'+donutHTML(dv(qualif,total),'#e8b64a',pct(qPct),'qualif A+B',150)+'</div>'
+      +'<div class="score-body"><div>'+donutHTML(dv(qualif,total),'#10b981',pct(qPct),'qualif A+B',150)+'</div>'
       +'<div style="flex:1">'
         +'<div class="hl-row"><span class="hl-k"><b style="color:var(--gold2)">Qualificado</b> A+B</span><span class="hl-bar"><span style="width:'+qPct+'%;background:linear-gradient(90deg,var(--A),var(--B))"></span></span><span class="hl-v">'+intf(qualif)+' · '+pct(qPct)+'</span></div>'
         +'<div class="hl-row"><span class="hl-k"><b style="color:var(--muted)">Não-qualif.</b> C–E</span><span class="hl-bar"><span style="width:'+nqPct+'%;background:var(--D)"></span></span><span class="hl-v">'+intf(naoQ)+' · '+pct(nqPct)+'</span></div>'
