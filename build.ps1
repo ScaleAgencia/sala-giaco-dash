@@ -307,30 +307,13 @@ function Build-Sales($qCsv,$kind){
   }
 }
 
-Write-Host "Baixando planilhas (LP q+leads; FORM5 q + 2 abas de leads; IMERSAO q)..."
-$qLpCsv=Join-Path $dataDir 'q_lp.csv'; $lLpCsv=Join-Path $dataDir 'leads_lp.csv'
-$qF5Csv=Join-Path $dataDir 'q_f5.csv'; $lF5Csv=Join-Path $dataDir 'leads_f5.csv'; $lF6Csv=Join-Path $dataDir 'leads_form6.csv'
-$lLpNewCsv=Join-Path $dataDir 'leads_lp_new.csv'
-Get-Sheet      $MASTER      $LP_Q_GID   $qLpCsv
-Get-Sheet      $LP_LEADS_ID $LP_L_GID   $lLpCsv     # leads LP antigos (retroativo)
-Get-Sheet      $LP_L2_ID    $LP_L2_GID  $lLpNewCsv  # leads LP novos (form ABI)
-Get-Sheet      $MASTER      $F5_Q_GID   $qF5Csv
-Get-Sheet      $MASTER      $F5_L_GID   $lF5Csv    # SDC-FORM5-LEADS (retroativo)
-Get-SheetNamed $MASTER      $F5_L2_NAME $lF6Csv    # FORM6-COPY (novos leads)
+Write-Host "Baixando planilhas do FORM7 (queries + leads)..."
 $qF7Csv=Join-Path $dataDir 'q_form7.csv'; $lF7Csv=Join-Path $dataDir 'leads_form7.csv'
 Get-Sheet      $MASTER      $F7_Q_GID   $qF7Csv    # Queries FORM7
-Get-Sheet      $F7_L_ID     $F7_L_GID   $lF7Csv    # GIACOBELI FORM 7 - Leads
-$qImrCsv=Join-Path $dataDir 'q_imersao.csv'
-Get-Sheet      $MASTER      $IMR_Q_GID  $qImrCsv   # QUERIES IMERSAO (funil de vendas)
+Get-Sheet      $F7_L_ID     $F7_L_GID   $lF7Csv    # SDC-FORM7- NOVO (leads)
 
-Write-Host "Processando SALA LP (leads antigos retroativo + planilha nova)..."
-$lp = Build-Funnel $qLpCsv @($lLpCsv,$lLpNewCsv) 'lp'
-Write-Host "Processando SALA FORM5 (SDC-FORM5 retroativo + FORM6-COPY novos)..."
-$f5 = Build-Funnel $qF5Csv @($lF5Csv,$lF6Csv) 'f5'
 Write-Host "Processando FORM7 (form ABI, leadscore pelo investimento)..."
 $f7 = Build-Funnel $qF7Csv @($lF7Csv) 'f7'
-Write-Host "Processando IMERSAO (funil de vendas)..."
-$imr = Build-Sales $qImrCsv 'imersao'
 
 $nowIso=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 $nowBR =[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'E. South America Standard Time').ToString('dd/MM/yyyy HH:mm')
@@ -338,25 +321,9 @@ $utf8=[System.Text.UTF8Encoding]::new($false)
 
 $payload=[pscustomobject]@{
   generatedAt=$nowIso; generatedAtBR=$nowBR; taxMultiplier=$TAX
-  scoring=@(
-    [pscustomobject]@{label='Cargo de conselheiro (Consultor / Diretor-C-Level / Mentor)';pts=1}
-    [pscustomobject]@{label='Conhece Conselho Consultivo (Basico / Medio / Avancado)';pts=1}
-    [pscustomobject]@{label='Ja oferece conselhos de graca (quer cobrar)';pts=1}
-    [pscustomobject]@{label='Deseja atuar como conselheiro';pts=1}
-  )
-  tiers=@(
-    [pscustomobject]@{tier='A';label='Quente';min=4}
-    [pscustomobject]@{tier='B';label='Morno';min=3}
-    [pscustomobject]@{tier='C';label='Medio';min=2}
-    [pscustomobject]@{tier='D';label='Frio';min=1}
-    [pscustomobject]@{tier='E';label='Desqualificado';min=0}
-  )
-  lp=$lp; form5=$f5; form7=$f7; imersao=$imr
+  form7=$f7
 }
 $json=$payload | ConvertTo-Json -Depth 12 -Compress
 [IO.File]::WriteAllText((Join-Path $root 'data.js'), ("window.SALA="+$json+";"), $utf8)
-Write-Host ("OK  LP: leads={0} A={1} B={2}  |  FORM5: leads={3} A={4} B={5}  |  FORM7: leads={6} A={7} B={8} E={9}  |  IMERSAO: vendas={10} spend=R$ {11}" -f `
-  $lp.totals.leads,$lp.totals.A,$lp.totals.B,`
-  $f5.totals.leads,$f5.totals.A,$f5.totals.B,`
-  $f7.totals.leads,$f7.totals.A,$f7.totals.B,$f7.totals.E,`
-  $imr.totals.purchases,($imr.totals.spend.ToString('N2',$BR)))
+Write-Host ("OK  FORM7: leads={0} A={1} B={2} E={3}  spend=R$ {4}" -f `
+  $f7.totals.leads,$f7.totals.A,$f7.totals.B,$f7.totals.E,($f7.totals.spend.ToString('N2',$BR)))

@@ -695,16 +695,12 @@ function el(id){ return document.getElementById(id); }
 el('updated').textContent = D.generatedAtBR || '—';
 el('taxf').textContent = nf4.format(D.taxMultiplier||1.1385);
 
-if(!D.lp && !D.form5){
-  el('tab-lp').innerHTML='<div class="coverage"><b>Sem dados.</b> Rode o build.ps1 para gerar o data.js.</div>';
+if(!D.form7){
+  el('tab-f7').innerHTML='<div class="coverage"><b>Sem dados.</b> Rode o build.ps1 para gerar o data.js.</div>';
 } else {
-  var funnels={ lp:new Funnel('lp', D.lp||{}), f5:new Funnel('f5', D.form5||{}), f7:new Funnel('f7', D.form7||{}) };
-  funnels.lp.mount(); funnels.f5.mount(); funnels.f7.mount(); mountImersao(); mountLeads();
-  var TABS=['lp','f5','f7','imersao','leads'];
-  function activateTab(id){ if(TABS.indexOf(id)<0)id='lp'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
-    TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
-  function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t])funnels[t].showSub(parts[1]); }
-  Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(t){ t.addEventListener('click',function(){ var id=t.getAttribute('data-tab'); activateTab(id); if(history.replaceState)history.replaceState(null,'','#'+id); }); });
+  var f7=new Funnel('f7', D.form7||{}); f7.mount();
+  // deep-link p/ a sub-aba: #score / #traf (sem abas principais — dash de funil único)
+  function route(){ var sub=(location.hash||'').replace('#','').split('.').pop(); if(sub==='score'||sub==='traf')f7.showSub(sub); }
   route();
   window.addEventListener('hashchange',route);
 }
