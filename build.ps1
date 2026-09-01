@@ -352,6 +352,32 @@ $f7 = Build-Funnel $qF7Csv @($lF7Csv) 'f7'
 Write-Host "Processando MTR (captacao por UTM, so perfil do lead)..."
 $mtr = Build-Funnel $qMtrCsv @($lMtrCsv) 'mtr'
 
+# --- Insercao MANUAL de criativos do MTR que NAO vem das queries (gasto/leads passados a mao) ---
+# gastos informados sao os do gerenciador (crus) -> aplico ×TAX p/ ficar consistente com o resto da dash.
+# Editar aqui p/ add/tirar/ajustar (spendRaw = valor cru sem imposto).
+$MTR_MANUAL = @(
+  [pscustomobject]@{ad='AD43_VIDEO_MTR_STORY_NAO_EXISTE_MERCADO_SATURADO'; spendRaw=76; leads=1}
+  [pscustomobject]@{ad='AD44_VIDEO_MTR_STORY_ADIA_DECISOES_IMPORTANTES';   spendRaw=58; leads=0}
+  [pscustomobject]@{ad='AD45_VIDEO_MTR_STORY_PARAR_SEU_NEGOCIO';           spendRaw=58; leads=0}
+)
+if($MTR_MANUAL.Count -gt 0){
+  $mtrCamp=($mtr.grain | Where-Object { $_.campaign -ne 'SEM_RASTREIO' } | Group-Object campaign | Sort-Object Count -Descending | Select-Object -First 1).Name
+  if([string]::IsNullOrEmpty($mtrCamp)){ $mtrCamp='MTR' }
+  $mDate=$(if($mtr.dateMax){$mtr.dateMax}else{'sem-data'})
+  $manAdset='MANUAL (fora das queries)'
+  $gl=New-Object System.Collections.Generic.List[object]; $mtr.grain | ForEach-Object { $gl.Add($_) }
+  $sumSp=0.0; $sumLd=0
+  foreach($m in $MTR_MANUAL){ $sp=[double]$m.spendRaw*$TAX; $sumSp+=$sp; $sumLd+=[int]$m.leads
+    $gl.Add([pscustomobject]@{date=$mDate;campaign=$mtrCamp;adset=$manAdset;ad=$m.ad;spend=$sp;impr=0;reach=0;clicks=0;lpv=0;v3=0;v75=0;metaLeads=0;leads=[int]$m.leads;A=0;B=0;C=0;D=0;E=0;NS=[int]$m.leads}) }
+  $mtr | Add-Member -MemberType NoteProperty -Name grain -Value ($gl.ToArray()) -Force
+  $dRow=$mtr.daily | Where-Object { $_.date -eq $mDate } | Select-Object -First 1
+  if($dRow){ $dRow.spend=[double]$dRow.spend+$sumSp; $dRow.leads=[int]$dRow.leads+$sumLd; $dRow.NS=[int]$dRow.NS+$sumLd }
+  $mtr.totals | Add-Member -MemberType NoteProperty -Name spend -Value ([double]$mtr.totals.spend+$sumSp) -Force
+  $mtr.totals | Add-Member -MemberType NoteProperty -Name leads -Value ([int]$mtr.totals.leads+$sumLd) -Force
+  $mtr.totals | Add-Member -MemberType NoteProperty -Name attributed -Value ([int]$mtr.totals.attributed+$sumLd) -Force
+  Write-Host ("  + {0} criativos manuais no MTR (spend +R$ {1}, leads +{2})" -f $MTR_MANUAL.Count,($sumSp.ToString('N2',$BR)),$sumLd)
+}
+
 $nowIso=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 $nowBR =[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'E. South America Standard Time').ToString('dd/MM/yyyy HH:mm')
 $utf8=[System.Text.UTF8Encoding]::new($false)
