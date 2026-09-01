@@ -29,6 +29,9 @@ $F7_Q_GID = '1320534268'   # aba "Queries - FORM7" (no MASTER)
 $F7_L_ID  = '1a-bUrbN8fuJWPBSEIc24Kp-h--xHeQLTFOLljS50NkQ'  # planilha "SDC-FORM7- NOVO" (superset, inclui o historico)
 $F7_L_GID = '0'
 $IMR_Q_GID = '1269370345'  # aba "QUERIES | IMERSAO | Meta ads" (funil de VENDAS, sem cruzamento)
+$MTR_Q_GID = '980241023'   # aba "MTR QUERIES" (no MASTER)
+$MTR_L_ID  = '1sfFt_X9pi8g0WgT2aAQjkQt-11EOGXEfB7Rzz5_VXPw'  # planilha de leads do MTR (form proprio, UTM)
+$MTR_L_GID = '1509811533'
 $TAX = 1.1385              # imposto Meta (+13,85%) aplicado em TODO gasto
 
 # ---- helpers -------------------------------------------------------
@@ -136,6 +139,7 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     $g.spend+=$sp;$g.impr+=$im;$g.reach+=$rc;$g.clicks+=$ck;$g.lpv+=$lp;$g.v3+=$v3;$g.v75+=$v75;$g.metaLeads+=$ml }
 
   $distCargo=@{}; $distArea=@{}; $distNivel=@{}
+  $mPapel=@{}; $mColab=@{}; $mFat=@{}; $mMom=@{}; $mProb=@{}   # perfil MTR (sem leadscore)
   $cntMet=@{ qc=0; qn=0; qi=0; qg=0 }   # quantos leads bateram cada criterio
   $totLeads=0; $tierTot=@{A=0;B=0;C=0;D=0;E=0;NS=0}; $attributed=0
 
@@ -158,6 +162,14 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
        $L_INT=-1; $L_CONS=-1
        $n=$lh.Count; $L_UMED=$n-4; $L_UCAMP=$n-3; $L_UCONT=$n-2
      }
+   } elseif($kind -eq 'mtr'){
+     # MTR = form proprio (atribuicao por UTM). SEM leadscore -> so perfil. criado_em em ISO.
+     $isOldForm = $false
+     $L_DATE=HdrLike $lh '*criado_em*'; $L_MAIL=HdrLike $lh '*email*'
+     $L_UCAMP=HdrLike $lh '*utm_campaign*'; $L_UMED=HdrLike $lh '*utm_medium*'; $L_UCONT=HdrLike $lh '*utm_content*'
+     $L_MPAPEL=HdrLike $lh '*papel*'; $L_MCOLAB=HdrLike $lh '*colaboradores*'; $L_MFAT=HdrLike $lh '*faturamento*'
+     $L_MMOM=HdrLike $lh '*momento*'; $L_MPROB=HdrLike $lh '*problema*'
+     $L_CARGO=$L_MPAPEL; $L_NIVEL=$L_MCOLAB   # so p/ o teste de linha vazia
    } elseif($kind -eq 'f7'){
      # FORM7 = form ABI nativo. Leadscore vem da pergunta do INVESTIMENTO. Perfil = papel/area/momento.
      $isOldForm = $false
@@ -193,7 +205,7 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     $totLeads++; $tierTot[$tier]++
 
     # atribuicao
-    if($kind -eq 'lp'){
+    if($kind -eq 'lp' -or $kind -eq 'mtr'){
       $uc=Field $r $L_UCAMP; $ucD=Deaccent $uc; $isMacro=($uc -match '\{\{|\}\}')
       $camp='SEM_RASTREIO'
       if(-not $isMacro -and $uc -ne ''){ if($campSet -contains $uc){$camp=$uc}elseif($campDe.ContainsKey($ucD)){$camp=$campDe[$ucD]} }
@@ -217,6 +229,13 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
       $ck=Field $r $L_CARGO; if($ck -ne ''){ if(-not $distCargo.ContainsKey($ck)){$distCargo[$ck]=0}; $distCargo[$ck]++ }
       $ak=Field $r $L_AREA;  if($ak -ne ''){ if(-not $distArea.ContainsKey($ak)){$distArea[$ak]=0}; $distArea[$ak]++ }
       $nk=Field $r $L_NIVEL; if($nk -ne ''){ if(-not $distNivel.ContainsKey($nk)){$distNivel[$nk]=0}; $distNivel[$nk]++ }
+    }
+    if($kind -eq 'mtr'){   # perfil sobre TODOS os leads (sem leadscore)
+      $vp=Field $r $L_MPAPEL; if($vp -ne ''){ if(-not $mPapel.ContainsKey($vp)){$mPapel[$vp]=0}; $mPapel[$vp]++ }
+      $vc=Field $r $L_MCOLAB; if($vc -ne ''){ if(-not $mColab.ContainsKey($vc)){$mColab[$vc]=0}; $mColab[$vc]++ }
+      $vf=Field $r $L_MFAT;   if($vf -ne ''){ if(-not $mFat.ContainsKey($vf)){$mFat[$vf]=0}; $mFat[$vf]++ }
+      $vm=Field $r $L_MMOM;   if($vm -ne ''){ if(-not $mMom.ContainsKey($vm)){$mMom[$vm]=0}; $mMom[$vm]++ }
+      $vb=Field $r $L_MPROB;  if($vb -ne ''){ if(-not $mProb.ContainsKey($vb)){$mProb[$vb]=0}; $mProb[$vb]++ }
     }
    }
   }
@@ -260,8 +279,21 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
     $fProfileTitles=@('Papel profissional','Area de especialidade','Momento & interesse')
   }
 
+  # MTR = sem leadscore, so PERFIL do lead (distribuicoes de cada pergunta)
+  $mtrProfile=$null
+  if($kind -eq 'mtr'){
+    $mtrProfile=@(
+      [pscustomobject]@{title='Papel na empresa';items=(DistArr $mPapel)}
+      [pscustomobject]@{title='Faturamento';items=(DistArr $mFat)}
+      [pscustomobject]@{title='Nº de colaboradores';items=(DistArr $mColab)}
+      [pscustomobject]@{title='Momento da empresa';items=(DistArr $mMom)}
+      [pscustomobject]@{title='Principal problema';items=(DistArr $mProb)}
+    )
+  }
+
   return [pscustomobject]@{
-    kind=$kind; hasLPV=($kind -eq 'lp'); hasReach=($kind -eq 'f5' -or $kind -eq 'f7'); hasVideo=($kind -eq 'lp')
+    kind=$kind; hasLPV=($kind -eq 'lp'); hasReach=($kind -eq 'f5' -or $kind -eq 'f7' -or $kind -eq 'mtr'); hasVideo=($kind -eq 'lp')
+    noScore=($kind -eq 'mtr'); profile=$mtrProfile
     dateMin=$(if($dates.Count){$dates[0]}else{''}); dateMax=$(if($dates.Count){$dates[-1]}else{''})
     leadDateMin=$(if($ldDates.Count){$ldDates[0]}else{''}); leadDateMax=$(if($ldDates.Count){$ldDates[-1]}else{''})
     totals=$tot; criteria=@($criteria); scoring=$fScoring; tiers=$fTiers; profileTitles=$fProfileTitles
@@ -307,13 +339,18 @@ function Build-Sales($qCsv,$kind){
   }
 }
 
-Write-Host "Baixando planilhas do FORM7 (queries + leads)..."
+Write-Host "Baixando planilhas do FORM7 e do MTR (queries + leads)..."
 $qF7Csv=Join-Path $dataDir 'q_form7.csv'; $lF7Csv=Join-Path $dataDir 'leads_form7.csv'
 Get-Sheet      $MASTER      $F7_Q_GID   $qF7Csv    # Queries FORM7
 Get-Sheet      $F7_L_ID     $F7_L_GID   $lF7Csv    # SDC-FORM7- NOVO (leads)
+$qMtrCsv=Join-Path $dataDir 'q_mtr.csv'; $lMtrCsv=Join-Path $dataDir 'leads_mtr.csv'
+Get-Sheet      $MASTER      $MTR_Q_GID  $qMtrCsv   # MTR QUERIES
+Get-Sheet      $MTR_L_ID    $MTR_L_GID  $lMtrCsv   # MTR leads
 
 Write-Host "Processando FORM7 (form ABI, leadscore pelo investimento)..."
 $f7 = Build-Funnel $qF7Csv @($lF7Csv) 'f7'
+Write-Host "Processando MTR (captacao por UTM, so perfil do lead)..."
+$mtr = Build-Funnel $qMtrCsv @($lMtrCsv) 'mtr'
 
 $nowIso=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 $nowBR =[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'E. South America Standard Time').ToString('dd/MM/yyyy HH:mm')
@@ -321,9 +358,10 @@ $utf8=[System.Text.UTF8Encoding]::new($false)
 
 $payload=[pscustomobject]@{
   generatedAt=$nowIso; generatedAtBR=$nowBR; taxMultiplier=$TAX
-  form7=$f7
+  form7=$f7; mtr=$mtr
 }
 $json=$payload | ConvertTo-Json -Depth 12 -Compress
 [IO.File]::WriteAllText((Join-Path $root 'data.js'), ("window.SALA="+$json+";"), $utf8)
-Write-Host ("OK  FORM7: leads={0} A={1} B={2} E={3}  spend=R$ {4}" -f `
-  $f7.totals.leads,$f7.totals.A,$f7.totals.B,$f7.totals.E,($f7.totals.spend.ToString('N2',$BR)))
+Write-Host ("OK  FORM7: leads={0} A={1} B={2} E={3} spend=R$ {4}  |  MTR: leads={5} rastreados={6} spend=R$ {7}" -f `
+  $f7.totals.leads,$f7.totals.A,$f7.totals.B,$f7.totals.E,($f7.totals.spend.ToString('N2',$BR)),`
+  $mtr.totals.leads,$mtr.totals.attributed,($mtr.totals.spend.ToString('N2',$BR)))
