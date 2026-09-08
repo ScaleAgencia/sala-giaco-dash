@@ -505,7 +505,8 @@ function mountMtr(){
     return '<tr class="lvl'+lvl+(hasKids?' parent':'')+'" data-key="'+encodeURIComponent(tkey)+'"><td><span class="name" title="'+esc(n.full||n.name)+'">'+caret+' '+esc(n.name)+'</span></td>'+metricsCells(n)+'</tr>'; }
   function sortKids(obj){ return Object.keys(obj).sort(function(x,y){ return (obj[y].leads-obj[x].leads) || obj[y].spend-obj[x].spend; }); }
   function renderTree(rng){
-    var rows=grain.filter(function(r){return inRange(r.date,rng);});
+    // inserções manuais (date='sem-data') só aparecem no "Tudo"; recortes de data mostram só o que tem data
+    var rows=grain.filter(function(r){ return r.date==='sem-data' ? (period==='tudo') : inRange(r.date,rng); });
     var camps=buildTree(rows), order=sortKids(camps);
     if(!treeInited){ order.forEach(function(cK){ treeExpanded['c:'+cK]=true; }); treeInited=true; }
     var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Cliques</th><th>Leads</th><th>CPL</th><th>CTR</th></tr></thead>';
@@ -548,7 +549,9 @@ function mountMtr(){
     Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.classList.toggle('on', period===b.getAttribute('data-k')); });
     var dr=q('daterange'); if(dr) dr.classList.toggle('on', period==='custom');
     var de=q('dtDe'), ate=q('dtAte'); if(de&&ate){ de.value=rng[0]; ate.value=rng[1]; } }
-  function draw(){ var rng=rangeFor(period), a=aggDaily(rng), p=aggDaily(prevRange(rng)), days=daysInRange(rng);
+  // no "Tudo" o KPI usa os TOTAIS (inclui as inserções manuais sem-data); recortes usam só o daily (com data)
+  function totAgg(){ var t=fd.totals||{}; return {spend:t.spend||0,impr:t.impr||0,reach:t.reach||0,clicks:t.clicks||0,leads:t.leads||0}; }
+  function draw(){ var rng=rangeFor(period), a=(period==='tudo')?totAgg():aggDaily(rng), p=aggDaily(prevRange(rng)), days=daysInRange(rng);
     renderKpiCol(a,p); renderChartLeads(days); renderChartInvest(days); renderDaily(rng); renderTree(rng); }
   function activateSub(id){ if(id!=='traf'&&id!=='perfil')id='traf';
     Array.prototype.forEach.call(q('subnav').querySelectorAll('button'),function(b){ b.classList.toggle('on', b.getAttribute('data-s')===id); });

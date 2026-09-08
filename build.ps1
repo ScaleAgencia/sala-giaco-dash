@@ -366,7 +366,7 @@ $MTR_MANUAL = @(
   [pscustomobject]@{campaign=$pageCamp; adset='mix ads';          ad='AD42_VIDEO_mtr';                                   spendRaw=300; leads=4}
 )
 if($MTR_MANUAL.Count -gt 0){
-  $mDate=$(if($mtr.dateMax){$mtr.dateMax}else{'sem-data'})
+  $mDate='sem-data'   # inserções manuais NAO tem data -> contam no total, mas nao caem em nenhum dia (nao inflam "hoje")
   $gl=New-Object System.Collections.Generic.List[object]; $mtr.grain | ForEach-Object { $gl.Add($_) }
   $sumSp=0.0; $sumLd=0
   foreach($m in $MTR_MANUAL){ $sp=[double]$m.spendRaw*$TAX; $sumSp+=$sp; $sumLd+=[int]$m.leads
