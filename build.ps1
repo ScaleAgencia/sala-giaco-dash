@@ -28,6 +28,10 @@ $F5_L2_NAME = 'FORM6-COPY' # aba nova onde caem os novos leads do FORM5 (por nom
 $F7_Q_GID = '1320534268'   # aba "Queries - FORM7" (no MASTER)
 $F7_L_ID  = '1a-bUrbN8fuJWPBSEIc24Kp-h--xHeQLTFOLljS50NkQ'  # planilha "SDC-FORM7- NOVO" (superset, inclui o historico)
 $F7_L_GID = '0'
+# FORM7: remove o INVESTIMENTO da campanha "NOVOS ADS EMPRESARIOS" (nao conta gasto) e move os LEADS dela
+# pra campanha fria principal. Match por substring. Deixar $F7_DROP_SPEND vazio p/ desligar.
+$F7_DROP_SPEND = 'NOVOS ADS EMPRESARIOS'
+$F7_REMAP_TO   = 'SDC | E2-CAP | P1-FRIO | | 2026-07-22 | PFRIO|  FORM7'
 $IMR_Q_GID = '1269370345'  # aba "QUERIES | IMERSAO | Meta ads" (funil de VENDAS, sem cruzamento)
 $MTR_Q_GID = '980241023'   # aba "MTR QUERIES" (no MASTER)
 $MTR_L_ID  = '1sfFt_X9pi8g0WgT2aAQjkQt-11EOGXEfB7Rzz5_VXPw'  # planilha de leads do MTR (form proprio, UTM)
@@ -132,6 +136,7 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
 
   # -- gasto/impressoes por dia+leaf (lado das queries) --
   foreach($r in $qd){ $d=QDate (Field $r $Q_DAY); if($d -eq ''){continue}
+    if($kind -eq 'f7' -and $F7_DROP_SPEND -ne '' -and (Field $r $Q_CAMP) -like "*$F7_DROP_SPEND*"){ continue }  # remove investimento dessa campanha
     $sp=(MoneyBR (Field $r $Q_SPEND))*$TAX; $im=ToInt(Field $r $Q_IMP); $rc=ToInt(Field $r $Q_REACH); $ck=ToInt(Field $r $Q_CLK)
     $lp=ToInt(Field $r $Q_LPV); $v3=ToInt(Field $r $Q_V3); $v75=ToInt(Field $r $Q_V75); $ml=ToInt(Field $r $Q_ML)
     $o=GDay $d; $o.spend+=$sp;$o.impr+=$im;$o.reach+=$rc;$o.clicks+=$ck;$o.lpv+=$lp;$o.v3+=$v3;$o.v75+=$v75;$o.metaLeads+=$ml
@@ -220,6 +225,7 @@ function Build-Funnel($qCsv,$lCsvList,$kind){
       $camp=Field $r $L_FCAMP; $adset=Field $r $L_FSET; $ad=Field $r $L_FAD
       if($camp -eq ''){ $camp='SEM_RASTREIO' }; if($adset -eq ''){ $adset='SEM_RASTREIO' }; if($ad -eq ''){ $ad='SEM_RASTREIO' }
     }
+    if($kind -eq 'f7' -and $F7_DROP_SPEND -ne '' -and $camp -like "*$F7_DROP_SPEND*"){ $camp=$F7_REMAP_TO }  # leads dessa campanha vao p/ a fria
     if($camp -ne 'SEM_RASTREIO'){ $attributed++ }
 
     if($d -ne 'sem-data'){ $o=GDay $d; $o.leads++; $o.$tier++ }
