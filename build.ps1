@@ -32,6 +32,8 @@ $F7_L_GID = '0'
 # pra campanha fria principal. Match por substring. Deixar $F7_DROP_SPEND vazio p/ desligar.
 $F7_DROP_SPEND = 'NOVOS ADS EMPRESARIOS'
 $F7_REMAP_TO   = 'SDC | E2-CAP | P1-FRIO | | 2026-07-22 | PFRIO|  FORM7'
+# Override de gasto EXIBIDO por dia (valor ja com imposto, como aparece na dash). So os dias listados.
+$F7_SPEND_FIX  = @{ '2026-09-15' = 76.80 }
 $IMR_Q_GID = '1269370345'  # aba "QUERIES | IMERSAO | Meta ads" (funil de VENDAS, sem cruzamento)
 $MTR_Q_GID = '980241023'   # aba "MTR QUERIES" (no MASTER)
 $MTR_L_ID  = '1sfFt_X9pi8g0WgT2aAQjkQt-11EOGXEfB7Rzz5_VXPw'  # planilha de leads do MTR (form proprio, UTM)
@@ -355,6 +357,17 @@ Get-Sheet      $MTR_L_ID    $MTR_L_GID  $lMtrCsv   # MTR leads
 
 Write-Host "Processando FORM7 (form ABI, leadscore pelo investimento)..."
 $f7 = Build-Funnel $qF7Csv @($lF7Csv) 'f7'
+# --- override de gasto exibido por dia (ex.: 15/09 so investiu R$76,80) ---
+foreach($od in $F7_SPEND_FIX.Keys){
+  $tg=[double]$F7_SPEND_FIX[$od]
+  $rws=@($f7.grain | Where-Object { $_.date -eq $od })
+  $cur=[double](($rws | Measure-Object spend -Sum).Sum)
+  if($rws.Count -gt 0 -and $cur -gt 0){ $sc=$tg/$cur; foreach($rw in $rws){ $rw.spend=[double]$rw.spend*$sc } }
+  $dr=$f7.daily | Where-Object { $_.date -eq $od } | Select-Object -First 1
+  $old=$(if($dr){[double]$dr.spend}else{0}); if($dr){ $dr.spend=$tg }
+  $f7.totals | Add-Member -MemberType NoteProperty -Name spend -Value ([double]$f7.totals.spend - $old + $tg) -Force
+  Write-Host ("  override gasto FORM7 " + $od + ": " + [math]::Round($old,2) + " -> " + $tg)
+}
 Write-Host "Processando MTR (captacao por UTM, so perfil do lead)..."
 $mtr = Build-Funnel $qMtrCsv @($lMtrCsv) 'mtr'
 
