@@ -226,16 +226,21 @@ function Funnel(key, fd){
     var cn=c[r.campaign]||(c[r.campaign]=newNode(prettyNode(r.campaign),r.campaign)); accum(cn,r);
     var sn=cn.kids[r.adset]||(cn.kids[r.adset]=newNode(prettyNode(r.adset),r.adset)); accum(sn,r);
     var an=sn.kids[r.ad]||(sn.kids[r.ad]=newNode(prettyNode(r.ad),r.ad)); accum(an,r); }); return c; }
-  function metricsCells(n){ var qy=n.A+n.B, taxaQ=dv(qy,n.leads)*100, cpl=n.leads>0?dv(n.spend,n.leads):null, cplQ=qy>0?dv(n.spend,qy):null, ctr=dv(n.clicks,n.impr)*100;
+  function metricsCells(n){ var qy=n.A+n.B, taxaQ=dv(qy,n.leads)*100, cpl=n.leads>0?dv(n.spend,n.leads):null, cplQ=qy>0?dv(n.spend,qy):null,
+        ctr=n.impr>0?dv(n.clicks,n.impr)*100:null, cpm=n.impr>0?dv(n.spend,n.impr)*1000:null, cpc=n.clicks>0?dv(n.spend,n.clicks):null;
     return '<td class="num">'+money0(n.spend)+'</td>'
+      +'<td class="num">'+(n.impr?intf(n.impr):'·')+'</td>'
+      +'<td class="num">'+(cpm!=null?money(cpm):'—')+'</td>'
+      +'<td class="num">'+(n.clicks?intf(n.clicks):'·')+'</td>'
+      +'<td class="num">'+(ctr!=null?pct(ctr):'—')+'</td>'
+      +'<td class="num">'+(cpc!=null?money(cpc):'—')+'</td>'
       +'<td class="num">'+intf(n.leads)+'</td>'
+      +'<td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,50,120)+'">'+money0(cpl)+'</span>':'—')+'</td>'
       +'<td class="num">'+(n.A?'<span class="pillA">'+n.A+'</span>':'·')+'</td>'
       +'<td class="num">'+(n.B?'<span class="pillB">'+n.B+'</span>':'·')+'</td>'
       +'<td class="num qcell">'+(qy||'·')+'</td>'
       +'<td class="num">'+(n.leads?pct(taxaQ):'—')+'</td>'
-      +'<td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,50,120)+'">'+money0(cpl)+'</span>':'—')+'</td>'
-      +'<td class="num">'+(cplQ!=null?'<span class="cpl-pill '+cplClass(cplQ,60,150)+'">'+money0(cplQ)+'</span>':'—')+'</td>'
-      +'<td class="num">'+pct(ctr)+'</td>'; }
+      +'<td class="num">'+(cplQ!=null?'<span class="cpl-pill '+cplClass(cplQ,60,150)+'">'+money0(cplQ)+'</span>':'—')+'</td>'; }
   function treeRow(n,lvl,tkey,hasKids){
     var caret=hasKids?'<span class="caret'+(treeExpanded[tkey]?' open':'')+'">▶</span>':'<span class="caret" style="opacity:.2">•</span>';
     return '<tr class="lvl'+lvl+(hasKids?' parent':'')+'" data-key="'+encodeURIComponent(tkey)+'">'
@@ -246,12 +251,12 @@ function Funnel(key, fd){
     var rows=grain.filter(function(r){return inRange(r.date,rng);});
     var camps=buildTree(rows), order=sortKids(camps);
     if(!treeInited){ order.forEach(function(cK){ treeExpanded['c:'+cK]=true; }); treeInited=true; }
-    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Leads</th><th>A</th><th>B</th><th>Qualif</th><th>%Qualif</th><th>CPL</th><th>CPL Qualif</th><th>CTR</th></tr></thead>';
+    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Impr.</th><th>CPM</th><th>Cliques</th><th>CTR</th><th>CPC</th><th>Leads</th><th>CPL</th><th>A</th><th>B</th><th>Qualif</th><th>%Qualif</th><th>CPL Qualif</th></tr></thead>';
     var out=[];
     order.forEach(function(cK){ var c=camps[cK],cKey='c:'+cK,cHas=Object.keys(c.kids).length>0; out.push(treeRow(c,0,cKey,cHas));
       if(treeExpanded[cKey]){ sortKids(c.kids).forEach(function(sK){ var sN=c.kids[sK],sKey=cKey+'|s:'+sK,sHas=Object.keys(sN.kids).length>0; out.push(treeRow(sN,1,sKey,sHas));
         if(treeExpanded[sKey]){ sortKids(sN.kids).forEach(function(aK){ out.push(treeRow(sN.kids[aK],2,sKey+'|a:'+aK,false)); }); } }); } });
-    if(!out.length) out.push('<tr><td colspan="10" class="empty">Sem dados no período.</td></tr>');
+    if(!out.length) out.push('<tr><td colspan="14" class="empty">Sem dados no período.</td></tr>');
     q('treeTbl').innerHTML=head+'<tbody>'+out.join('')+'</tbody>';
     q('treeLegend').innerHTML='<span><span class="dot" style="background:var(--A)"></span>Leadscore A</span>'
       +'<span><span class="dot" style="background:var(--B)"></span>Leadscore B</span>'
@@ -497,11 +502,16 @@ function mountMtr(){
     var cn=c[r.campaign]||(c[r.campaign]=newNode(prettyNode(r.campaign),r.campaign)); accum(cn,r);
     var sn=cn.kids[r.adset]||(cn.kids[r.adset]=newNode(prettyNode(r.adset),r.adset)); accum(sn,r);
     var an=sn.kids[r.ad]||(sn.kids[r.ad]=newNode(prettyNode(r.ad),r.ad)); accum(an,r); }); return c; }
-  function metricsCells(n){ var cpl=n.leads>0?dv(n.spend,n.leads):null, ctr=dv(n.clicks,n.impr)*100;
-    return '<td class="num">'+money0(n.spend)+'</td><td class="num">'+intf(n.clicks)+'</td>'
+  function metricsCells(n){ var cpl=n.leads>0?dv(n.spend,n.leads):null,
+        ctr=n.impr>0?dv(n.clicks,n.impr)*100:null, cpm=n.impr>0?dv(n.spend,n.impr)*1000:null, cpc=n.clicks>0?dv(n.spend,n.clicks):null;
+    return '<td class="num">'+money0(n.spend)+'</td>'
+      +'<td class="num">'+(n.impr?intf(n.impr):'·')+'</td>'
+      +'<td class="num">'+(cpm!=null?money(cpm):'—')+'</td>'
+      +'<td class="num">'+(n.clicks?intf(n.clicks):'·')+'</td>'
+      +'<td class="num">'+(ctr!=null?pct(ctr):'—')+'</td>'
+      +'<td class="num">'+(cpc!=null?money(cpc):'—')+'</td>'
       +'<td class="num qcell">'+(n.leads||'·')+'</td>'
-      +'<td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,120,300)+'">'+money0(cpl)+'</span>':'—')+'</td>'
-      +'<td class="num">'+pct(ctr)+'</td>'; }
+      +'<td class="num">'+(cpl!=null?'<span class="cpl-pill '+cplClass(cpl,120,300)+'">'+money0(cpl)+'</span>':'—')+'</td>'; }
   function treeRow(n,lvl,tkey,hasKids){ var caret=hasKids?'<span class="caret'+(treeExpanded[tkey]?' open':'')+'">▶</span>':'<span class="caret" style="opacity:.2">•</span>';
     return '<tr class="lvl'+lvl+(hasKids?' parent':'')+'" data-key="'+encodeURIComponent(tkey)+'"><td><span class="name" title="'+esc(n.full||n.name)+'">'+caret+' '+esc(n.name)+'</span></td>'+metricsCells(n)+'</tr>'; }
   function sortKids(obj){ return Object.keys(obj).sort(function(x,y){ return (obj[y].leads-obj[x].leads) || obj[y].spend-obj[x].spend; }); }
@@ -510,12 +520,12 @@ function mountMtr(){
     var rows=grain.filter(function(r){ return r.date==='sem-data' ? (period==='tudo') : inRange(r.date,rng); });
     var camps=buildTree(rows), order=sortKids(camps);
     if(!treeInited){ order.forEach(function(cK){ treeExpanded['c:'+cK]=true; }); treeInited=true; }
-    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Cliques</th><th>Leads</th><th>CPL</th><th>CTR</th></tr></thead>';
+    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Impr.</th><th>CPM</th><th>Cliques</th><th>CTR</th><th>CPC</th><th>Leads</th><th>CPL</th></tr></thead>';
     var out=[];
     order.forEach(function(cK){ var c=camps[cK],cKey='c:'+cK,cHas=Object.keys(c.kids).length>0; out.push(treeRow(c,0,cKey,cHas));
       if(treeExpanded[cKey]){ sortKids(c.kids).forEach(function(sK){ var sN=c.kids[sK],sKey=cKey+'|s:'+sK,sHas=Object.keys(sN.kids).length>0; out.push(treeRow(sN,1,sKey,sHas));
         if(treeExpanded[sKey]){ sortKids(sN.kids).forEach(function(aK){ out.push(treeRow(sN.kids[aK],2,sKey+'|a:'+aK,false)); }); } }); } });
-    if(!out.length) out.push('<tr><td colspan="6" class="empty">Sem dados no período.</td></tr>');
+    if(!out.length) out.push('<tr><td colspan="9" class="empty">Sem dados no período.</td></tr>');
     q('treeTbl').innerHTML=head+'<tbody>'+out.join('')+'</tbody>';
     q('treeLegend').innerHTML='<span><span class="dot" style="background:var(--teal)"></span>Leads</span>'
       +'<span><span class="dot" style="background:#10b981"></span>CPL barato</span>'
