@@ -2,6 +2,7 @@
 (function(){
 'use strict';
 var D = window.SALA || {};
+if(window.SALA_IMR){ D.imersao = window.SALA_IMR; }  // funil de vendas Imersão (dados via MCP do Meta, arquivo separado)
 var arr = function(x){ return Array.isArray(x) ? x : (x ? [x] : []); };
 var clamp = function(x){ return Math.max(0, Math.min(1, x)); };
 var nf0 = new Intl.NumberFormat('pt-BR');
@@ -613,7 +614,7 @@ function mountImersao(){
     return [minDate,maxDate];
   }
   function prevRange(rng){ var len=daysBetween(rng[0],rng[1])+1; var pe=addDays(rng[0],-1); return [addDays(pe,-(len-1)),pe]; }
-  var METS=['spend','impr','clicks','lpv','v3','purchases'];
+  var METS=['spend','impr','clicks','lpv','v3','purchases','revenue'];
   function aggDaily(rng){ var o={}; METS.forEach(function(k){o[k]=0;});
     daily.forEach(function(d){ if(!inRange(d.date,rng))return; METS.forEach(function(k){o[k]+=(d[k]||0);}); }); return o; }
   function daysInRange(rng){ return daily.filter(function(d){return isDate(d.date)&&inRange(d.date,rng);}).sort(function(a,b){return a.date.localeCompare(b.date);}); }
@@ -647,6 +648,11 @@ function mountImersao(){
       +subRow('Conv. clique→Venda',pct(dv(a.purchases,a.clicks)*100),'')
       +'<div class="mini-bar"><span style="width:'+barW.toFixed(0)+'%;background:'+barC+'"></span></div>'
       +'<div class="goal-meta"><span>CPA vs ref. R$ '+tgt+'</span></div>');
+    var roas=dv(a.revenue,a.spend), pRoas=dv(p.revenue,p.spend), ticket=dv(a.revenue,a.purchases);
+    cards+=kpiCard(false,'Faturamento (Meta)',money(a.revenue),
+      subRow('ROAS',nf2.format(roas)+'x',trendHTML(roas,pRoas,true))
+      +subRow('Ticket médio',a.purchases?money(ticket):'—','')
+      +subRow('Resultado',money(a.revenue-a.spend),''));
     q('kpiCol').innerHTML=hero+cards;
     var mi=q('metaInp'); if(mi){ mi.addEventListener('change',function(){ var v=parseFloat(mi.value); if(isFinite(v)&&v>0){ setMeta(v); renderKpiCol(a,p);} }); }
   }
@@ -699,46 +705,50 @@ function mountImersao(){
     var rows=daysInRange(rng).slice().sort(function(a,b){return b.date.localeCompare(a.date);});
     var maxS=Math.max.apply(null,rows.map(function(r){return r.spend||0;}).concat([1]));
     var maxV=Math.max.apply(null,rows.map(function(r){return r.purchases||0;}).concat([1]));
-    var head='<thead><tr><th>Dia</th><th>Gasto</th><th>Impr.</th><th>Cliques</th><th>LPV</th><th>Vendas</th><th>CPA</th><th>Conv LP→Venda</th><th>CPM</th></tr></thead>';
-    var body=rows.map(function(r){ var cpa=r.purchases>0?dv(r.spend,r.purchases):null, conv=dv(r.purchases,r.lpv)*100, cpm=dv(r.spend,r.impr)*1000;
+    var head='<thead><tr><th>Dia</th><th>Gasto</th><th>Impr.</th><th>Cliques</th><th>LPV</th><th>Vendas</th><th>Receita</th><th>ROAS</th><th>CPA</th><th>Conv LP→Venda</th><th>CPM</th></tr></thead>';
+    var body=rows.map(function(r){ var cpa=r.purchases>0?dv(r.spend,r.purchases):null, conv=dv(r.purchases,r.lpv)*100, cpm=dv(r.spend,r.impr)*1000, roas=r.spend>0?dv(r.revenue,r.spend):null;
       return '<tr><td>'+fmtBR(r.date)+'</td>'
         +'<td class="num"><span class="heatcell" style="'+heatBg('91,91,214',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
         +'<td class="num">'+intf(r.impr)+'</td><td class="num">'+intf(r.clicks)+'</td><td class="num">'+intf(r.lpv)+'</td>'
         +'<td class="num"><span class="heatcell" style="'+heatBg('16,185,129',r.purchases/maxV)+'">'+(r.purchases||'·')+'</span></td>'
+        +'<td class="num">'+(r.revenue>0?money0(r.revenue):'·')+'</td>'
+        +'<td class="num">'+(roas!=null&&r.revenue>0?nf2.format(roas)+'x':'—')+'</td>'
         +'<td class="num">'+(cpa!=null?'<span class="cpl-pill '+cpaClass(cpa)+'">'+money0(cpa)+'</span>':'—')+'</td>'
         +'<td class="num">'+(r.lpv?pct(conv):'—')+'</td>'
         +'<td class="num">'+money(cpm)+'</td></tr>';
     }).join('');
-    if(!rows.length) body='<tr><td colspan="9" class="empty">Sem dados no período.</td></tr>';
+    if(!rows.length) body='<tr><td colspan="11" class="empty">Sem dados no período.</td></tr>';
     q('dailyTbl').innerHTML=head+'<tbody>'+body+'</tbody>';
   }
 
   /* ---- optimização (árvore) ---- */
   function prettyNode(c){ return c==='SEM_RASTREIO'?'— sem rastreio —':c; }
-  function newNode(name,full){ return {name:name,full:full,spend:0,impr:0,clicks:0,lpv:0,purchases:0,kids:{}}; }
-  function accum(n,r){ n.spend+=r.spend||0;n.impr+=r.impr||0;n.clicks+=r.clicks||0;n.lpv+=r.lpv||0;n.purchases+=r.purchases||0; }
+  function newNode(name,full){ return {name:name,full:full,spend:0,impr:0,clicks:0,lpv:0,purchases:0,revenue:0,kids:{}}; }
+  function accum(n,r){ n.spend+=r.spend||0;n.impr+=r.impr||0;n.clicks+=r.clicks||0;n.lpv+=r.lpv||0;n.purchases+=r.purchases||0;n.revenue+=r.revenue||0; }
   function buildTree(rows){ var c={}; rows.forEach(function(r){
     var cn=c[r.campaign]||(c[r.campaign]=newNode(prettyNode(r.campaign),r.campaign)); accum(cn,r);
     var sn=cn.kids[r.adset]||(cn.kids[r.adset]=newNode(prettyNode(r.adset),r.adset)); accum(sn,r);
     var an=sn.kids[r.ad]||(sn.kids[r.ad]=newNode(prettyNode(r.ad),r.ad)); accum(an,r); }); return c; }
-  function metricsCells(n){ var cpa=n.purchases>0?dv(n.spend,n.purchases):null, ctr=dv(n.clicks,n.impr)*100, conv=dv(n.purchases,n.lpv)*100;
+  function metricsCells(n){ var cpa=n.purchases>0?dv(n.spend,n.purchases):null, ctr=dv(n.clicks,n.impr)*100, conv=dv(n.purchases,n.lpv)*100, roas=n.spend>0?dv(n.revenue,n.spend):null;
     return '<td class="num">'+money0(n.spend)+'</td><td class="num">'+intf(n.clicks)+'</td><td class="num">'+intf(n.lpv)+'</td>'
       +'<td class="num qcell">'+(n.purchases||'·')+'</td>'
+      +'<td class="num">'+(n.revenue>0?money0(n.revenue):'·')+'</td>'
+      +'<td class="num">'+(roas!=null&&n.revenue>0?nf2.format(roas)+'x':'—')+'</td>'
       +'<td class="num">'+(cpa!=null?'<span class="cpl-pill '+cpaClass(cpa)+'">'+money0(cpa)+'</span>':'—')+'</td>'
       +'<td class="num">'+(n.lpv?pct(conv):'—')+'</td><td class="num">'+pct(ctr)+'</td>'; }
   function treeRow(n,lvl,tkey,hasKids){ var caret=hasKids?'<span class="caret'+(treeExpanded[tkey]?' open':'')+'">▶</span>':'<span class="caret" style="opacity:.2">•</span>';
     return '<tr class="lvl'+lvl+(hasKids?' parent':'')+'" data-key="'+encodeURIComponent(tkey)+'"><td><span class="name" title="'+esc(n.full||n.name)+'">'+caret+' '+esc(n.name)+'</span></td>'+metricsCells(n)+'</tr>'; }
   function sortKids(obj){ return Object.keys(obj).sort(function(x,y){ return (obj[y].purchases-obj[x].purchases) || obj[y].spend-obj[x].spend; }); }
   function renderTree(rng){
-    var rows=grain.filter(function(r){return inRange(r.date,rng);});
+    var rows=grain.slice(); // grão vem agregado do Meta (período completo) — árvore não filtra por data
     var camps=buildTree(rows), order=sortKids(camps);
     if(!treeInited){ order.forEach(function(cK){ treeExpanded['c:'+cK]=true; }); treeInited=true; }
-    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Cliques</th><th>LPV</th><th>Vendas</th><th>CPA</th><th>Conv</th><th>CTR</th></tr></thead>';
+    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Cliques</th><th>LPV</th><th>Vendas</th><th>Receita</th><th>ROAS</th><th>CPA</th><th>Conv</th><th>CTR</th></tr></thead>';
     var out=[];
     order.forEach(function(cK){ var c=camps[cK],cKey='c:'+cK,cHas=Object.keys(c.kids).length>0; out.push(treeRow(c,0,cKey,cHas));
       if(treeExpanded[cKey]){ sortKids(c.kids).forEach(function(sK){ var sN=c.kids[sK],sKey=cKey+'|s:'+sK,sHas=Object.keys(sN.kids).length>0; out.push(treeRow(sN,1,sKey,sHas));
         if(treeExpanded[sKey]){ sortKids(sN.kids).forEach(function(aK){ out.push(treeRow(sN.kids[aK],2,sKey+'|a:'+aK,false)); }); } }); } });
-    if(!out.length) out.push('<tr><td colspan="8" class="empty">Sem dados no período.</td></tr>');
+    if(!out.length) out.push('<tr><td colspan="10" class="empty">Sem dados no período.</td></tr>');
     q('treeTbl').innerHTML=head+'<tbody>'+out.join('')+'</tbody>';
     q('treeLegend').innerHTML='<span><span class="dot" style="background:var(--teal)"></span>Vendas</span>'
       +'<span><span class="dot" style="background:#1f9c73"></span>CPA barato</span>'
@@ -759,7 +769,7 @@ function mountImersao(){
     renderKpiCol(a,p); renderChartSales(days); renderChartInvest(days); renderDaily(rng); renderTree(rng); }
 
   document.getElementById('tab-imersao').innerHTML=
-    '<div class="coverage">Funil de <b>VENDAS</b> (Imersão) · dados direto do gerenciador Meta, <b>sem cruzamento com leads</b> · métrica principal: <b>vendas (compras)</b> · imposto ×1,1385 incluso · período '+fmtBR(minDate)+' → '+fmtBR(maxDate)+'</div>'
+    '<div class="coverage">Funil de <b>VENDAS</b> (Imersão · tag <b>IMRS</b>) · dados puxados <b>via MCP do Meta</b> (conta CA 01 - Giacobelli), <b>sem cruzamento com planilha</b> · métricas: <b>compras, CPA, receita e ROAS</b> do próprio gerenciador · imposto ×1,1385 no investimento · período '+fmtBR(minDate)+' → '+fmtBR(maxDate)+'</div>'
     +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Imersão · funil de vendas</div><div class="periods" id="imr-periods"></div></div>'
     +'<div class="funil-grid"><div class="kpi-col" id="imr-kpiCol"></div>'
     +'<div class="chart-col">'
@@ -767,7 +777,7 @@ function mountImersao(){
       +'<div class="card"><div class="card-h">Investimento x CPA por dia <span class="hint">barras = gasto · linha = custo por venda</span></div><div id="imr-chartInvest"></div></div>'
     +'</div></div>'
     +'<div class="card"><div class="card-h">Visão diária <span class="hint">mais recente no topo · cor mais forte = maior no período · CPA verde (bom) → vermelho (caro)</span></div><div class="table-scroll"><table class="tbl" id="imr-dailyTbl"></table></div></div>'
-    +'<div class="card"><div class="card-h">Otimização — Campanha › Conjunto › Anúncio <span class="hint">clique p/ abrir os níveis · veja de onde vêm as vendas</span></div><div class="tree-legend" id="imr-treeLegend"></div><div class="table-scroll"><table class="tbl tree" id="imr-treeTbl"></table></div></div>';
+    +'<div class="card"><div class="card-h">Otimização — Campanha › Conjunto › Anúncio <span class="hint">clique p/ abrir os níveis · veja de onde vêm as vendas · período completo (agregado)</span></div><div class="tree-legend" id="imr-treeLegend"></div><div class="table-scroll"><table class="tbl tree" id="imr-treeTbl"></table></div></div>';
 
   q('periods').innerHTML=periodsHTML();
   Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.addEventListener('click',function(){ period=b.getAttribute('data-k'); customRange=null; syncPeriodUI(); draw(); }); });
@@ -924,6 +934,8 @@ if(!D.form7 && !D.mtr){
   var mtr=new mountMtr(); // captação MTR (sem leadscore)
   var funnels={ f7:f7, mtr:mtr };
   var TABS=['f7','mtr'];
+  if(D.imersao){ mountImersao(); TABS.push('imersao'); } // funil de vendas Imersão (Meta MCP)
+  else { el('tab-imersao').innerHTML='<div class="coverage"><b>Sem dados da Imersão.</b> Rode o build-imersao.ps1 (dados via MCP do Meta).</div>'; }
   function activateTab(id){ if(TABS.indexOf(id)<0)id='f7'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
     TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
   function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t]&&funnels[t].showSub)funnels[t].showSub(parts[1]); }
