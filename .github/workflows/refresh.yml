@@ -47,7 +47,7 @@ jobs:
       - name: Monta _site (só arquivos públicos — sem CSV/PII)
         run: |
           mkdir -p _site
-          cp index.html app.js styles.css data.js .nojekyll _site/
+          cp index.html app.js styles.css data.js data-imersao.js .nojekyll _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
