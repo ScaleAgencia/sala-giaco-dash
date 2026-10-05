@@ -3,6 +3,7 @@
 'use strict';
 var D = window.SALA || {};
 if(window.SALA_IMR){ D.imersao = window.SALA_IMR; }  // funil de vendas Imersão (dados via MCP do Meta, arquivo separado)
+if(window.SALA_MCP){ D.aq = window.SALA_MCP.aq; D.seg = window.SALA_MCP.seg; }  // Aquecimento + Seguidores (via MCP do Meta)
 var arr = function(x){ return Array.isArray(x) ? x : (x ? [x] : []); };
 var clamp = function(x){ return Math.max(0, Math.min(1, x)); };
 var nf0 = new Intl.NumberFormat('pt-BR');
@@ -922,6 +923,238 @@ function mountLeads(){
   renderStatic(); syncPeriodUI(); draw();
 }
 
+/* =====================================================================
+   ABA AQUECIMENTO — campanha de ALCANCE (dados via MCP do Meta)
+   ===================================================================== */
+function mountAquecimento(){
+  var fd=D.aq||{}; var daily=arr(fd.daily), grain=arr(fd.grain), T=fd.totals||{};
+  var allDates=daily.map(function(d){return d.date;}).filter(isDate).sort();
+  var maxDate=fd.dateMax||allDates[allDates.length-1]||''; var minDate=fd.dateMin||allDates[0]||'';
+  var period='tudo', customRange=null, treeExpanded={}, treeInited=false;
+  function q(id){ return document.getElementById('aq-'+id); }
+  function rangeFor(k){ if(k==='custom'&&customRange)return customRange; if(k==='hoje')return[maxDate,maxDate]; if(k==='ontem'){var y=addDays(maxDate,-1);return[y,y];} if(k==='7d')return[addDays(maxDate,-6),maxDate]; if(k==='30d')return[addDays(maxDate,-29),maxDate]; return[minDate,maxDate]; }
+  function prevRange(rng){ var len=daysBetween(rng[0],rng[1])+1; var pe=addDays(rng[0],-1); return [addDays(pe,-(len-1)),pe]; }
+  function daysInRange(rng){ return daily.filter(function(d){return isDate(d.date)&&inRange(d.date,rng);}).sort(function(a,b){return a.date.localeCompare(b.date);}); }
+  function agg(rng,isTudo){ if(isTudo)return{spend:T.spend||0,impr:T.impr||0,reach:T.reach||0,clicks:T.clicks||0};
+    var o={spend:0,impr:0,reach:0,clicks:0}; daysInRange(rng).forEach(function(d){o.spend+=d.spend||0;o.impr+=d.impr||0;o.reach+=d.reach||0;o.clicks+=d.clicks||0;}); return o; }
+  function getMeta(){ var v=parseFloat(localStorage.getItem('sala_aq_meta')); return (isFinite(v)&&v>0)?v:2000; }
+  function setMeta(v){ try{localStorage.setItem('sala_aq_meta',v);}catch(e){} }
+  function subRow(l,v,tr){ return '<div class="sub-row"><span class="s-l">'+l+'</span><span class="s-v">'+v+(tr||'')+'</span></div>'; }
+  function kpiCard(hl,label,val,subs){ return '<div class="kpi-card'+(hl?' hl':'')+'"><div class="kpi-main"><div class="m-lab">'+label+'</div><div class="m-val">'+val+'</div></div><div class="kpi-sub">'+subs+'</div></div>'; }
+  function renderKpiCol(a,p,isTudo){
+    var meta=getMeta(), goal=meta>0?a.spend/meta*100:0;
+    var hero='<div class="kpi-hero"><div class="h-top"><div><div class="h-lab">Investimento com imposto</div><div class="h-val">'+money(a.spend)+'</div></div>'
+      +'<div class="meta-inp">Meta R$ <input id="aq-metaInp" type="number" min="0" step="500" value="'+meta+'"></div></div>'
+      +'<div class="goal-wrap"><div class="goal-track"><span style="width:'+Math.min(100,goal).toFixed(1)+'%"></span></div>'
+      +'<div class="goal-meta"><span class="goal-pct">'+pct(goal)+' da meta</span><span>Meta '+money0(meta)+'</span></div></div></div>';
+    var cpr=dv(a.spend,a.reach)*1000, pcpr=dv(p.spend,p.reach)*1000, freq=dv(a.impr,a.reach), cpm=dv(a.spend,a.impr)*1000;
+    var cards='';
+    cards+=kpiCard(true,'Alcance'+(isTudo?'':' (aprox.)'),intf(a.reach),
+      subRow('Custo/mil alcance',money(cpr),trendHTML(cpr,pcpr,false))
+      +subRow('Frequência',nf1.format(freq)+'x','')
+      +subRow('Impressões',intf(a.impr),''));
+    cards+=kpiCard(false,'Impressões',intf(a.impr), subRow('CPM',money(cpm),trendHTML(cpm,dv(p.spend,p.impr)*1000,false)));
+    cards+=kpiCard(false,'Cliques no link',intf(a.clicks), subRow('CPC',a.clicks?money(dv(a.spend,a.clicks)):'—',''));
+    q('kpiCol').innerHTML=hero+cards;
+    var mi=q('metaInp'); if(mi){ mi.addEventListener('change',function(){ var v=parseFloat(mi.value); if(isFinite(v)&&v>0){setMeta(v);renderKpiCol(a,p,isTudo);} }); }
+  }
+  function tipReach(d){ return '<div class="tt-d">'+fmtBR(d.date)+'</div><div class="tt-r"><span style="color:var(--teal)">Alcance</span><b>'+intf(d.reach)+'</b></div><div class="tt-sub">Gasto '+money0(d.spend)+' · Freq '+nf1.format(d.freq||dv(d.impr,d.reach))+'x</div>'; }
+  function tipCpr(d){ var cpr=dv(d.spend,d.reach)*1000; return '<div class="tt-d">'+fmtBR(d.date)+'</div><div class="tt-r"><span style="color:var(--gold2)">Investimento</span><b>'+money0(d.spend)+'</b></div><div class="tt-r"><span style="color:#f59e0b">Custo/mil alc.</span><b>'+money(cpr)+'</b></div>'; }
+  function barChart(elId,days,valFn,color,legend,tipFn){
+    var W=600,H=210,pl=34,pr=10,pt=12,pb=22,pw=W-pl-pr,ph=H-pt-pb,base=pt+ph;
+    var maxV=Math.max.apply(null,days.map(valFn).concat([1])); var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(15,gw*0.5));
+    var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/><text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+intf(maxV*f)+'</text>'; });
+    days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, v=valFn(d), vh=ph*dv(v,maxV); if(v>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-vh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+vh.toFixed(1)+'" rx="1.5" fill="'+color+'"/>'; });
+    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    s+=hitRectsM(days,pl,gw,pt,ph)+'</svg>';
+    q(elId).innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:'+color+'"></span>'+legend+'</span></div>';
+    bindHitsM(q(elId),days,tipFn);
+  }
+  function spendLineChart(elId,days,lineFn,lineLabel,tipFn){
+    var W=600,H=210,pl=34,pr=38,pt=12,pb=22,pw=W-pl-pr,ph=H-pt-pb,base=pt+ph;
+    var maxS=Math.max.apply(null,days.map(function(d){return d.spend||0;}).concat([1]));
+    var lv=days.map(lineFn); var maxL=Math.max.apply(null,lv.filter(function(x){return x!=null;}).concat([1]));
+    var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(15,gw*0.55));
+    var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/><text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+intf(maxS*f)+'</text><text x="'+(W-pr+4)+'" y="'+(y+3)+'" text-anchor="start" fill="#f59e0b" font-size="9">'+nf1.format(maxL*f)+'</text>'; });
+    days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, sh=ph*dv(d.spend,maxS); if(d.spend>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-sh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+sh.toFixed(1)+'" rx="1.5" fill="rgba(91,91,214,.3)"/>'; });
+    var pts=[]; days.forEach(function(d,i){ if(lv[i]!=null&&isFinite(lv[i])){ var xc=pl+gw*i+gw/2, y=base-ph*dv(lv[i],maxL); pts.push([xc,y]); } });
+    if(pts.length>1){ s+='<path d="M'+pts.map(function(pp){return pp[0].toFixed(1)+' '+pp[1].toFixed(1);}).join(' L')+'" fill="none" stroke="#f59e0b" stroke-width="2"/>'; }
+    pts.forEach(function(pp){ s+='<circle cx="'+pp[0].toFixed(1)+'" cy="'+pp[1].toFixed(1)+'" r="2.6" fill="#f59e0b"/>'; });
+    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    s+=hitRectsM(days,pl,gw,pt,ph)+'</svg>';
+    q(elId).innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(91,91,214,.5)"></span>Investimento</span><span><span class="ln" style="background:#f59e0b"></span>'+lineLabel+'</span></div>';
+    bindHitsM(q(elId),days,tipFn);
+  }
+  function renderDaily(rng){
+    var rows=daysInRange(rng).slice().sort(function(a,b){return b.date.localeCompare(a.date);});
+    var maxS=Math.max.apply(null,rows.map(function(r){return r.spend||0;}).concat([1]));
+    var maxR=Math.max.apply(null,rows.map(function(r){return r.reach||0;}).concat([1]));
+    var head='<thead><tr><th>Dia</th><th>Gasto</th><th>Alcance</th><th>Freq</th><th>Impr.</th><th>CPM</th><th>Custo/mil alc.</th></tr></thead>';
+    var body=rows.map(function(r){ var cpr=dv(r.spend,r.reach)*1000, cpm=dv(r.spend,r.impr)*1000, freq=r.freq||dv(r.impr,r.reach);
+      return '<tr><td>'+fmtBR(r.date)+'</td><td class="num"><span class="heatcell" style="'+heatBg('91,91,214',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('52,211,176',r.reach/maxR)+'">'+intf(r.reach)+'</span></td>'
+        +'<td class="num">'+nf1.format(freq)+'x</td><td class="num">'+intf(r.impr)+'</td><td class="num">'+money(cpm)+'</td><td class="num">'+money(cpr)+'</td></tr>'; }).join('');
+    if(!rows.length) body='<tr><td colspan="7" class="empty">Sem dados no período.</td></tr>';
+    q('dailyTbl').innerHTML=head+'<tbody>'+body+'</tbody>';
+  }
+  function prettyNode(c){ return c==='SEM_RASTREIO'?'— sem rastreio —':c; }
+  function newNode(name,full){ return {name:name,full:full,spend:0,impr:0,reach:0,clicks:0,kids:{}}; }
+  function accum(n,r){ n.spend+=r.spend||0;n.impr+=r.impr||0;n.reach+=r.reach||0;n.clicks+=r.clicks||0; }
+  function buildTree(rows){ var c={}; rows.forEach(function(r){ var cn=c[r.campaign]||(c[r.campaign]=newNode(prettyNode(r.campaign),r.campaign)); accum(cn,r); var sn=cn.kids[r.adset]||(cn.kids[r.adset]=newNode(prettyNode(r.adset),r.adset)); accum(sn,r); var an=sn.kids[r.ad]||(sn.kids[r.ad]=newNode(prettyNode(r.ad),r.ad)); accum(an,r); }); return c; }
+  function metricsCells(n){ var cpr=dv(n.spend,n.reach)*1000, cpm=dv(n.spend,n.impr)*1000, freq=dv(n.impr,n.reach);
+    return '<td class="num">'+money0(n.spend)+'</td><td class="num">'+intf(n.reach)+'</td><td class="num">'+nf1.format(freq)+'x</td><td class="num">'+intf(n.impr)+'</td><td class="num">'+money(cpm)+'</td><td class="num">'+money(cpr)+'</td>'; }
+  function treeRow(n,lvl,tkey,hasKids){ var caret=hasKids?'<span class="caret'+(treeExpanded[tkey]?' open':'')+'">▶</span>':'<span class="caret" style="opacity:.2">•</span>'; return '<tr class="lvl'+lvl+(hasKids?' parent':'')+'" data-key="'+encodeURIComponent(tkey)+'"><td><span class="name" title="'+esc(n.full||n.name)+'">'+caret+' '+esc(n.name)+'</span></td>'+metricsCells(n)+'</tr>'; }
+  function sortKids(obj){ return Object.keys(obj).sort(function(x,y){ return obj[y].reach-obj[x].reach || obj[y].spend-obj[x].spend; }); }
+  function renderTree(){ var rows=grain.slice(); var camps=buildTree(rows), order=sortKids(camps);
+    if(!treeInited){ order.forEach(function(cK){ treeExpanded['c:'+cK]=true; }); treeInited=true; }
+    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Alcance</th><th>Freq</th><th>Impr.</th><th>CPM</th><th>Custo/mil alc.</th></tr></thead>';
+    var out=[]; order.forEach(function(cK){ var c=camps[cK],cKey='c:'+cK,cHas=Object.keys(c.kids).length>0; out.push(treeRow(c,0,cKey,cHas));
+      if(treeExpanded[cKey]){ sortKids(c.kids).forEach(function(sK){ var sN=c.kids[sK],sKey=cKey+'|s:'+sK,sHas=Object.keys(sN.kids).length>0; out.push(treeRow(sN,1,sKey,sHas));
+        if(treeExpanded[sKey]){ sortKids(sN.kids).forEach(function(aK){ out.push(treeRow(sN.kids[aK],2,sKey+'|a:'+aK,false)); }); } }); } });
+    if(!out.length) out.push('<tr><td colspan="7" class="empty">Sem dados.</td></tr>');
+    q('treeTbl').innerHTML=head+'<tbody>'+out.join('')+'</tbody>';
+    q('treeLegend').innerHTML='<span style="color:var(--muted2)">ordenado por alcance · período completo (agregado)</span>';
+    Array.prototype.forEach.call(q('treeTbl').querySelectorAll('tr.parent'),function(tr){ tr.addEventListener('click',function(){ var k=decodeURIComponent(tr.getAttribute('data-key')); treeExpanded[k]=!treeExpanded[k]; renderTree(); }); });
+  }
+  function periodsHTML(){ return PRESETS.filter(function(p){return p.k!=='leads';}).map(function(p){return '<button data-k="'+p.k+'" class="pbtn">'+p.label+'</button>';}).join('')+'<span class="daterange" id="aq-daterange"><span class="dr-l">De</span> <input type="date" id="aq-dtDe" min="'+minDate+'" max="'+maxDate+'"> <span class="dr-l">até</span> <input type="date" id="aq-dtAte" min="'+minDate+'" max="'+maxDate+'"></span>'; }
+  function syncPeriodUI(){ var rng=rangeFor(period); Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.classList.toggle('on', period===b.getAttribute('data-k')); }); var dr=q('daterange'); if(dr) dr.classList.toggle('on', period==='custom'); var de=q('dtDe'),ate=q('dtAte'); if(de&&ate){de.value=rng[0];ate.value=rng[1];} }
+  function draw(){ var isTudo=(period==='tudo'); var rng=rangeFor(period), a=agg(rng,isTudo), p=agg(prevRange(rng),false), days=daysInRange(rng);
+    renderKpiCol(a,p,isTudo); barChart('chartReach',days,function(d){return d.reach||0;},'var(--teal)','Alcance por dia',tipReach); spendLineChart('chartInvest',days,function(d){return dv(d.spend,d.reach)*1000;},'Custo/mil alcance',tipCpr); renderDaily(rng); renderTree(); }
+  document.getElementById('tab-aquecimento').innerHTML=
+    '<div class="coverage">Campanha de <b>ALCANCE</b> (Aquecimento · tag E1-DIST) · dados <b>via MCP do Meta</b> (CA 01 - Giacobelli) · métricas: <b>alcance, frequência, CPM e custo por mil alcançados</b> · imposto ×1,1385 · <b>alcance do período total = alcance único real</b> (recortes de data somam o diário) · '+fmtBR(minDate)+' → '+fmtBR(maxDate)+'</div>'
+    +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Aquecimento · alcance</div><div class="periods" id="aq-periods"></div></div>'
+    +'<div class="funil-grid"><div class="kpi-col" id="aq-kpiCol"></div><div class="chart-col">'
+      +'<div class="card"><div class="card-h">Alcance por dia <span class="hint">contas Meta alcançadas</span></div><div id="aq-chartReach"></div></div>'
+      +'<div class="card"><div class="card-h">Investimento x Custo/mil alcance <span class="hint">barras = gasto · linha = custo por mil pessoas</span></div><div id="aq-chartInvest"></div></div>'
+    +'</div></div>'
+    +'<div class="card"><div class="card-h">Visão diária <span class="hint">mais recente no topo · cor mais forte = maior no período</span></div><div class="table-scroll"><table class="tbl" id="aq-dailyTbl"></table></div></div>'
+    +'<div class="card"><div class="card-h">Otimização — Campanha › Conjunto › Anúncio <span class="hint">clique p/ abrir · período completo (agregado)</span></div><div class="tree-legend" id="aq-treeLegend"></div><div class="table-scroll"><table class="tbl tree" id="aq-treeTbl"></table></div></div>';
+  q('periods').innerHTML=periodsHTML();
+  Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.addEventListener('click',function(){ period=b.getAttribute('data-k'); customRange=null; syncPeriodUI(); draw(); }); });
+  var de=q('dtDe'),ate=q('dtAte'); function onDate(){ var s=de.value,e=ate.value; if(!s||!e)return; if(s>e){var t=s;s=e;e=t;} if(s<minDate)s=minDate; if(e>maxDate)e=maxDate; customRange=[s,e]; period='custom'; syncPeriodUI(); draw(); } de.addEventListener('change',onDate); ate.addEventListener('change',onDate);
+  syncPeriodUI(); draw();
+}
+
+/* =====================================================================
+   ABA SEGUIDORES — engajamento / visitas ao perfil (dados via MCP do Meta)
+   OBS: Meta nao expoe "seguidores" na API de ads; a campanha otimiza VISITAS AO PERFIL.
+   ===================================================================== */
+function mountSeguidores(){
+  var fd=D.seg||{}; var daily=arr(fd.daily), grain=arr(fd.grain), T=fd.totals||{};
+  var allDates=daily.map(function(d){return d.date;}).filter(isDate).sort();
+  var maxDate=fd.dateMax||allDates[allDates.length-1]||''; var minDate=fd.dateMin||allDates[0]||'';
+  var period='tudo', customRange=null, treeExpanded={}, treeInited=false;
+  function q(id){ return document.getElementById('seg-'+id); }
+  function rangeFor(k){ if(k==='custom'&&customRange)return customRange; if(k==='hoje')return[maxDate,maxDate]; if(k==='ontem'){var y=addDays(maxDate,-1);return[y,y];} if(k==='7d')return[addDays(maxDate,-6),maxDate]; if(k==='30d')return[addDays(maxDate,-29),maxDate]; return[minDate,maxDate]; }
+  function prevRange(rng){ var len=daysBetween(rng[0],rng[1])+1; var pe=addDays(rng[0],-1); return [addDays(pe,-(len-1)),pe]; }
+  function daysInRange(rng){ return daily.filter(function(d){return isDate(d.date)&&inRange(d.date,rng);}).sort(function(a,b){return a.date.localeCompare(b.date);}); }
+  function agg(rng,isTudo){ if(isTudo)return{spend:T.spend||0,impr:T.impr||0,reach:T.reach||0,clicks:T.clicks||0,pageEng:T.pageEng||0,visits:T.visits||0};
+    var o={spend:0,impr:0,reach:0,clicks:0,pageEng:0,visits:0}; daysInRange(rng).forEach(function(d){o.spend+=d.spend||0;o.impr+=d.impr||0;o.reach+=d.reach||0;o.clicks+=d.clicks||0;o.pageEng+=d.pageEng||0;o.visits+=d.visits||0;}); return o; }
+  function getMeta(){ var v=parseFloat(localStorage.getItem('sala_seg_meta')); return (isFinite(v)&&v>0)?v:1000; }
+  function setMeta(v){ try{localStorage.setItem('sala_seg_meta',v);}catch(e){} }
+  function cpvClass(v){ if(v==null||!isFinite(v)||v<=0) return 'cpl-n'; if(v<=1) return 'cpl-g'; if(v<=3) return 'cpl-a'; return 'cpl-r'; }
+  function subRow(l,v,tr){ return '<div class="sub-row"><span class="s-l">'+l+'</span><span class="s-v">'+v+(tr||'')+'</span></div>'; }
+  function kpiCard(hl,label,val,subs){ return '<div class="kpi-card'+(hl?' hl':'')+'"><div class="kpi-main"><div class="m-lab">'+label+'</div><div class="m-val">'+val+'</div></div><div class="kpi-sub">'+subs+'</div></div>'; }
+  function renderKpiCol(a,p,isTudo){
+    var meta=getMeta(), goal=meta>0?a.spend/meta*100:0;
+    var hero='<div class="kpi-hero"><div class="h-top"><div><div class="h-lab">Investimento com imposto</div><div class="h-val">'+money(a.spend)+'</div></div>'
+      +'<div class="meta-inp">Meta R$ <input id="seg-metaInp" type="number" min="0" step="200" value="'+meta+'"></div></div>'
+      +'<div class="goal-wrap"><div class="goal-track"><span style="width:'+Math.min(100,goal).toFixed(1)+'%"></span></div>'
+      +'<div class="goal-meta"><span class="goal-pct">'+pct(goal)+' da meta</span><span>Meta '+money0(meta)+'</span></div></div></div>';
+    var cpv=dv(a.spend,a.visits), pcpv=dv(p.spend,p.visits), cpe=dv(a.spend,a.pageEng), cpm=dv(a.spend,a.impr)*1000, ctr=dv(a.clicks,a.impr)*100;
+    var cards='';
+    cards+=kpiCard(true,'Visitas ao perfil',intf(a.visits),
+      subRow('Custo/visita',a.visits?money(cpv):'—',trendHTML(cpv,pcpv,false))
+      +subRow('Engajamentos',intf(a.pageEng),'')
+      +subRow('Custo/engaj.',a.pageEng?money(cpe):'—',''));
+    cards+=kpiCard(false,'Alcance'+(isTudo?'':' (aprox.)'),intf(a.reach), subRow('CPM',money(cpm),trendHTML(cpm,dv(p.spend,p.impr)*1000,false))+subRow('Impressões',intf(a.impr),''));
+    cards+=kpiCard(false,'Cliques no link',intf(a.clicks), subRow('CTR',pct(ctr),trendHTML(dv(a.clicks,a.impr),dv(p.clicks,p.impr),true))+subRow('CPC',a.clicks?money(dv(a.spend,a.clicks)):'—',''));
+    q('kpiCol').innerHTML=hero+cards;
+    var mi=q('metaInp'); if(mi){ mi.addEventListener('change',function(){ var v=parseFloat(mi.value); if(isFinite(v)&&v>0){setMeta(v);renderKpiCol(a,p,isTudo);} }); }
+  }
+  function tipVis(d){ return '<div class="tt-d">'+fmtBR(d.date)+'</div><div class="tt-r"><span style="color:var(--teal)">Visitas ao perfil</span><b>'+intf(d.visits)+'</b></div><div class="tt-sub">Gasto '+money0(d.spend)+' · Engaj '+intf(d.pageEng)+'</div>'; }
+  function tipCpv(d){ var cpv=dv(d.spend,d.visits); return '<div class="tt-d">'+fmtBR(d.date)+'</div><div class="tt-r"><span style="color:var(--gold2)">Investimento</span><b>'+money0(d.spend)+'</b></div><div class="tt-r"><span style="color:#f59e0b">Custo/visita</span><b>'+(d.visits?money(cpv):'—')+'</b></div>'; }
+  function barChart(elId,days,valFn,color,legend,tipFn){
+    var W=600,H=210,pl=34,pr=10,pt=12,pb=22,pw=W-pl-pr,ph=H-pt-pb,base=pt+ph;
+    var maxV=Math.max.apply(null,days.map(valFn).concat([1])); var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(18,gw*0.5));
+    var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/><text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+intf(maxV*f)+'</text>'; });
+    days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, v=valFn(d), vh=ph*dv(v,maxV); if(v>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-vh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+vh.toFixed(1)+'" rx="1.5" fill="'+color+'"/>'; });
+    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    s+=hitRectsM(days,pl,gw,pt,ph)+'</svg>';
+    q(elId).innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:'+color+'"></span>'+legend+'</span></div>';
+    bindHitsM(q(elId),days,tipFn);
+  }
+  function spendLineChart(elId,days,lineFn,lineLabel,tipFn){
+    var W=600,H=210,pl=34,pr=38,pt=12,pb=22,pw=W-pl-pr,ph=H-pt-pb,base=pt+ph;
+    var maxS=Math.max.apply(null,days.map(function(d){return d.spend||0;}).concat([1]));
+    var lv=days.map(lineFn); var maxL=Math.max.apply(null,lv.filter(function(x){return x!=null&&isFinite(x);}).concat([1]));
+    var n=days.length||1,gw=pw/n,bw=Math.max(2,Math.min(18,gw*0.55));
+    var s='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">';
+    [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f); s+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="#e6e9f4" stroke-dasharray="2 3"/><text x="'+(pl-4)+'" y="'+(y+3)+'" text-anchor="end" fill="#a0a7c6" font-size="9">'+intf(maxS*f)+'</text><text x="'+(W-pr+4)+'" y="'+(y+3)+'" text-anchor="start" fill="#f59e0b" font-size="9">'+nf2.format(maxL*f)+'</text>'; });
+    days.forEach(function(d,i){ var xc=pl+gw*i+gw/2, sh=ph*dv(d.spend,maxS); if(d.spend>0) s+='<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+(base-sh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+sh.toFixed(1)+'" rx="1.5" fill="rgba(91,91,214,.3)"/>'; });
+    var pts=[]; days.forEach(function(d,i){ if(lv[i]!=null&&isFinite(lv[i])){ var xc=pl+gw*i+gw/2, y=base-ph*dv(lv[i],maxL); pts.push([xc,y]); } });
+    if(pts.length>1){ s+='<path d="M'+pts.map(function(pp){return pp[0].toFixed(1)+' '+pp[1].toFixed(1);}).join(' L')+'" fill="none" stroke="#f59e0b" stroke-width="2"/>'; }
+    pts.forEach(function(pp){ s+='<circle cx="'+pp[0].toFixed(1)+'" cy="'+pp[1].toFixed(1)+'" r="2.6" fill="#f59e0b"/>'; });
+    xticksM(days).forEach(function(i){ var xc=pl+gw*i+gw/2; s+='<text x="'+xc.toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" fill="#a0a7c6" font-size="9">'+fmtBR(days[i].date)+'</text>'; });
+    s+=hitRectsM(days,pl,gw,pt,ph)+'</svg>';
+    q(elId).innerHTML='<div class="chart">'+s+'</div><div class="chart-legend"><span><span class="dot" style="background:rgba(91,91,214,.5)"></span>Investimento</span><span><span class="ln" style="background:#f59e0b"></span>'+lineLabel+'</span></div>';
+    bindHitsM(q(elId),days,tipFn);
+  }
+  function renderDaily(rng){
+    var rows=daysInRange(rng).slice().sort(function(a,b){return b.date.localeCompare(a.date);});
+    var maxS=Math.max.apply(null,rows.map(function(r){return r.spend||0;}).concat([1]));
+    var maxV=Math.max.apply(null,rows.map(function(r){return r.visits||0;}).concat([1]));
+    var head='<thead><tr><th>Dia</th><th>Gasto</th><th>Impr.</th><th>Alcance</th><th>Cliques</th><th>Engaj.</th><th>Visitas perfil</th><th>Custo/visita</th><th>CPM</th></tr></thead>';
+    var body=rows.map(function(r){ var cpv=dv(r.spend,r.visits), cpm=dv(r.spend,r.impr)*1000;
+      return '<tr><td>'+fmtBR(r.date)+'</td><td class="num"><span class="heatcell" style="'+heatBg('91,91,214',r.spend/maxS)+'">'+money0(r.spend)+'</span></td>'
+        +'<td class="num">'+intf(r.impr)+'</td><td class="num">'+intf(r.reach)+'</td><td class="num">'+intf(r.clicks)+'</td><td class="num">'+intf(r.pageEng)+'</td>'
+        +'<td class="num"><span class="heatcell" style="'+heatBg('52,211,176',r.visits/maxV)+'">'+(r.visits||'·')+'</span></td>'
+        +'<td class="num">'+(r.visits?'<span class="cpl-pill '+cpvClass(cpv)+'">'+money(cpv)+'</span>':'—')+'</td><td class="num">'+money(cpm)+'</td></tr>'; }).join('');
+    if(!rows.length) body='<tr><td colspan="9" class="empty">Sem dados no período.</td></tr>';
+    q('dailyTbl').innerHTML=head+'<tbody>'+body+'</tbody>';
+  }
+  function prettyNode(c){ return c==='SEM_RASTREIO'?'— sem rastreio —':c; }
+  function newNode(name,full){ return {name:name,full:full,spend:0,impr:0,reach:0,clicks:0,pageEng:0,visits:0,kids:{}}; }
+  function accum(n,r){ n.spend+=r.spend||0;n.impr+=r.impr||0;n.reach+=r.reach||0;n.clicks+=r.clicks||0;n.pageEng+=r.pageEng||0;n.visits+=r.visits||0; }
+  function buildTree(rows){ var c={}; rows.forEach(function(r){ var cn=c[r.campaign]||(c[r.campaign]=newNode(prettyNode(r.campaign),r.campaign)); accum(cn,r); var sn=cn.kids[r.adset]||(cn.kids[r.adset]=newNode(prettyNode(r.adset),r.adset)); accum(sn,r); var an=sn.kids[r.ad]||(sn.kids[r.ad]=newNode(prettyNode(r.ad),r.ad)); accum(an,r); }); return c; }
+  function metricsCells(n){ var cpv=dv(n.spend,n.visits), ctr=dv(n.clicks,n.impr)*100;
+    return '<td class="num">'+money0(n.spend)+'</td><td class="num">'+intf(n.reach)+'</td><td class="num">'+intf(n.clicks)+'</td><td class="num">'+intf(n.pageEng)+'</td>'
+      +'<td class="num qcell">'+(n.visits||'·')+'</td><td class="num">'+(n.visits?'<span class="cpl-pill '+cpvClass(cpv)+'">'+money(cpv)+'</span>':'—')+'</td><td class="num">'+pct(ctr)+'</td>'; }
+  function treeRow(n,lvl,tkey,hasKids){ var caret=hasKids?'<span class="caret'+(treeExpanded[tkey]?' open':'')+'">▶</span>':'<span class="caret" style="opacity:.2">•</span>'; return '<tr class="lvl'+lvl+(hasKids?' parent':'')+'" data-key="'+encodeURIComponent(tkey)+'"><td><span class="name" title="'+esc(n.full||n.name)+'">'+caret+' '+esc(n.name)+'</span></td>'+metricsCells(n)+'</tr>'; }
+  function sortKids(obj){ return Object.keys(obj).sort(function(x,y){ return obj[y].visits-obj[x].visits || obj[y].spend-obj[x].spend; }); }
+  function renderTree(){ var rows=grain.slice(); var camps=buildTree(rows), order=sortKids(camps);
+    if(!treeInited){ order.forEach(function(cK){ treeExpanded['c:'+cK]=true; }); treeInited=true; }
+    var head='<thead><tr><th>Campanha › Conjunto › Anúncio</th><th>Gasto</th><th>Alcance</th><th>Cliques</th><th>Engaj.</th><th>Visitas</th><th>Custo/visita</th><th>CTR</th></tr></thead>';
+    var out=[]; order.forEach(function(cK){ var c=camps[cK],cKey='c:'+cK,cHas=Object.keys(c.kids).length>0; out.push(treeRow(c,0,cKey,cHas));
+      if(treeExpanded[cKey]){ sortKids(c.kids).forEach(function(sK){ var sN=c.kids[sK],sKey=cKey+'|s:'+sK,sHas=Object.keys(sN.kids).length>0; out.push(treeRow(sN,1,sKey,sHas));
+        if(treeExpanded[sKey]){ sortKids(sN.kids).forEach(function(aK){ out.push(treeRow(sN.kids[aK],2,sKey+'|a:'+aK,false)); }); } }); } });
+    if(!out.length) out.push('<tr><td colspan="8" class="empty">Sem dados.</td></tr>');
+    q('treeTbl').innerHTML=head+'<tbody>'+out.join('')+'</tbody>';
+    q('treeLegend').innerHTML='<span><span class="dot" style="background:var(--teal)"></span>Visitas ao perfil</span><span style="color:var(--muted2)">ordenado por visitas · período completo (agregado)</span>';
+    Array.prototype.forEach.call(q('treeTbl').querySelectorAll('tr.parent'),function(tr){ tr.addEventListener('click',function(){ var k=decodeURIComponent(tr.getAttribute('data-key')); treeExpanded[k]=!treeExpanded[k]; renderTree(); }); });
+  }
+  function periodsHTML(){ return PRESETS.filter(function(p){return p.k!=='leads';}).map(function(p){return '<button data-k="'+p.k+'" class="pbtn">'+p.label+'</button>';}).join('')+'<span class="daterange" id="seg-daterange"><span class="dr-l">De</span> <input type="date" id="seg-dtDe" min="'+minDate+'" max="'+maxDate+'"> <span class="dr-l">até</span> <input type="date" id="seg-dtAte" min="'+minDate+'" max="'+maxDate+'"></span>'; }
+  function syncPeriodUI(){ var rng=rangeFor(period); Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.classList.toggle('on', period===b.getAttribute('data-k')); }); var dr=q('daterange'); if(dr) dr.classList.toggle('on', period==='custom'); var de=q('dtDe'),ate=q('dtAte'); if(de&&ate){de.value=rng[0];ate.value=rng[1];} }
+  function draw(){ var isTudo=(period==='tudo'); var rng=rangeFor(period), a=agg(rng,isTudo), p=agg(prevRange(rng),false), days=daysInRange(rng);
+    renderKpiCol(a,p,isTudo); barChart('chartVis',days,function(d){return d.visits||0;},'var(--teal)','Visitas ao perfil por dia',tipVis); spendLineChart('chartInvest',days,function(d){return dv(d.spend,d.visits);},'Custo/visita',tipCpv); renderDaily(rng); renderTree(); }
+  document.getElementById('tab-seguidores').innerHTML=
+    '<div class="coverage">Campanha de <b>ENGAJAMENTO</b> (Seguidores · tag C1) · dados <b>via MCP do Meta</b> (CA 01 - Giacobelli) · ⚠️ o Meta <b>não expõe seguidores líquidos na API</b> — a campanha otimiza <b>visitas ao perfil do Instagram</b>, então a métrica principal aqui é <b>visitas ao perfil</b> (+ engajamento) · imposto ×1,1385 · '+fmtBR(minDate)+' → '+fmtBR(maxDate)+'</div>'
+    +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Seguidores · visitas ao perfil</div><div class="periods" id="seg-periods"></div></div>'
+    +'<div class="funil-grid"><div class="kpi-col" id="seg-kpiCol"></div><div class="chart-col">'
+      +'<div class="card"><div class="card-h">Visitas ao perfil por dia <span class="hint">cliques que foram ao perfil do IG</span></div><div id="seg-chartVis"></div></div>'
+      +'<div class="card"><div class="card-h">Investimento x Custo/visita <span class="hint">barras = gasto · linha = custo por visita</span></div><div id="seg-chartInvest"></div></div>'
+    +'</div></div>'
+    +'<div class="card"><div class="card-h">Visão diária <span class="hint">mais recente no topo · cor mais forte = maior no período</span></div><div class="table-scroll"><table class="tbl" id="seg-dailyTbl"></table></div></div>'
+    +'<div class="card"><div class="card-h">Otimização — Campanha › Conjunto › Anúncio <span class="hint">clique p/ abrir · período completo (agregado)</span></div><div class="tree-legend" id="seg-treeLegend"></div><div class="table-scroll"><table class="tbl tree" id="seg-treeTbl"></table></div></div>';
+  q('periods').innerHTML=periodsHTML();
+  Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.addEventListener('click',function(){ period=b.getAttribute('data-k'); customRange=null; syncPeriodUI(); draw(); }); });
+  var de=q('dtDe'),ate=q('dtAte'); function onDate(){ var s=de.value,e=ate.value; if(!s||!e)return; if(s>e){var t=s;s=e;e=t;} if(s<minDate)s=minDate; if(e>maxDate)e=maxDate; customRange=[s,e]; period='custom'; syncPeriodUI(); draw(); } de.addEventListener('change',onDate); ate.addEventListener('change',onDate);
+  syncPeriodUI(); draw();
+}
+
 /* =================== BOOT =================== */
 function el(id){ return document.getElementById(id); }
 el('updated').textContent = D.generatedAtBR || '—';
@@ -936,6 +1169,8 @@ if(!D.form7 && !D.mtr){
   var TABS=['f7','mtr'];
   if(D.imersao){ mountImersao(); TABS.push('imersao'); } // funil de vendas Imersão (Meta MCP)
   else { el('tab-imersao').innerHTML='<div class="coverage"><b>Sem dados da Imersão.</b> Rode o build-imersao.ps1 (dados via MCP do Meta).</div>'; }
+  if(D.aq){ mountAquecimento(); TABS.push('aquecimento'); }  // campanha de alcance (Meta MCP)
+  if(D.seg){ mountSeguidores(); TABS.push('seguidores'); }   // visitas ao perfil (Meta MCP)
   function activateTab(id){ if(TABS.indexOf(id)<0)id='f7'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
     TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
   function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t]&&funnels[t].showSub)funnels[t].showSub(parts[1]); }
