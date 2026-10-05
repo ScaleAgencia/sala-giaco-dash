@@ -1155,6 +1155,41 @@ function mountSeguidores(){
   syncPeriodUI(); draw();
 }
 
+/* =====================================================================
+   ABA GERAL — visão de abertura: soma do investimento de TODOS os funis
+   ===================================================================== */
+function mountGeral(){
+  var COL={form7:'#5b5bd6',mtr:'#0ea5e9',imersao:'#10b981',aq:'#f59e0b',seg:'#ec4899'};
+  var items=[];
+  var f7=D.form7&&D.form7.totals; if(f7){ var fq=(f7.A||0)+(f7.B||0); items.push({k:'form7',label:'FORM7',tag:'captação · form ABI',spend:f7.spend||0,res:intf(f7.leads||0)+' leads · '+intf(fq)+' qualif',cost:'CPL Qualif '+(fq?money0(f7.spend/fq):'—')}); }
+  var mtr=D.mtr&&D.mtr.totals; if(mtr){ items.push({k:'mtr',label:'MTR',tag:'captação · perfil',spend:mtr.spend||0,res:intf(mtr.leads||0)+' leads',cost:'CPL '+(mtr.leads?money0(mtr.spend/mtr.leads):'—')}); }
+  var imr=D.imersao&&D.imersao.totals; if(imr){ items.push({k:'imersao',label:'Imersão',tag:'vendas',spend:imr.spend||0,res:intf(imr.purchases||0)+' vendas · ROAS '+nf2.format(dv(imr.revenue,imr.spend))+'x',cost:'CPA '+(imr.purchases?money0(imr.spend/imr.purchases):'—')}); }
+  var aq=D.aq&&D.aq.totals; if(aq){ items.push({k:'aq',label:'Aquecimento',tag:'alcance',spend:aq.spend||0,res:intf(aq.reach||0)+' alcance · '+nf1.format(aq.freq||dv(aq.impr,aq.reach))+'x',cost:'Custo/mil '+money(dv(aq.spend,aq.reach)*1000)}); }
+  var seg=D.seg&&D.seg.totals; if(seg){ items.push({k:'seg',label:'Seguidores',tag:'perfil',spend:seg.spend||0,res:intf(seg.visits||0)+' visitas perfil',cost:'Custo/visita '+(seg.visits?money(seg.spend/seg.visits):'—')}); }
+  var total=0; items.forEach(function(x){total+=x.spend;});
+  items.sort(function(a,b){return b.spend-a.spend;});
+  var maxS=Math.max.apply(null,items.map(function(x){return x.spend;}).concat([1]));
+  var capt=((f7?f7.leads:0)||0)+((mtr?mtr.leads:0)||0);
+  var sw=function(c){ return '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:'+c+';margin-right:7px;vertical-align:middle"></span>'; };
+  var stats='<div class="big-stats">'
+    +'<div class="stat-card gold"><div class="s-lab">Investimento total · todos os funis</div><div class="s-val">'+money(total)+'</div><div class="s-foot"><b>'+items.length+'</b> funis · imposto ×1,1385 incluso</div></div>'
+    +'<div class="stat-card"><div class="s-lab">Captação (leads)</div><div class="s-val">'+intf(capt)+'</div><div class="s-foot">FORM7 + MTR</div></div>'
+    +(imr?'<div class="stat-card"><div class="s-lab">Vendas · Imersão</div><div class="s-val">'+intf(imr.purchases||0)+'</div><div class="s-foot">CPA '+(imr.purchases?money0(imr.spend/imr.purchases):'—')+'</div></div>':'')
+    +(aq?'<div class="stat-card"><div class="s-lab">Alcance · Aquecimento</div><div class="s-val">'+intf(aq.reach||0)+'</div><div class="s-foot">Freq '+nf1.format(aq.freq||0)+'x</div></div>':'')
+    +'</div>';
+  var bars=items.map(function(x){ var w=Math.max(2,x.spend/maxS*100), pctT=total>0?x.spend/total*100:0;
+    return '<div class="crit"><div class="crit-top"><span class="cl">'+sw(COL[x.k])+x.label+' <small>'+x.tag+'</small></span><span class="cn">'+money0(x.spend)+' <small>('+pct(pctT)+')</small></span></div><div class="crit-track"><span style="width:'+w.toFixed(1)+'%;background:'+COL[x.k]+'"></span></div></div>'; }).join('');
+  var head='<thead><tr><th>Funil</th><th>Investimento</th><th>% do total</th><th>Resultado</th><th>Custo do resultado</th></tr></thead>';
+  var body=items.map(function(x){ var pctT=total>0?x.spend/total*100:0;
+    return '<tr><td><span class="name">'+sw(COL[x.k])+esc(x.label)+'</span></td><td class="num">'+money0(x.spend)+'</td><td class="num">'+pct(pctT)+'</td><td class="num">'+x.res+'</td><td class="num">'+x.cost+'</td></tr>'; }).join('');
+  var totRow='<tr style="border-top:2px solid var(--line)"><td><b>Total</b></td><td class="num"><b>'+money0(total)+'</b></td><td class="num"><b>100%</b></td><td class="num">—</td><td class="num">—</td></tr>';
+  document.getElementById('tab-geral').innerHTML=
+    '<div class="coverage">Visão <b>GERAL</b> · soma do <b>investimento de todos os funis</b> (FORM7 + MTR + Imersão + Aquecimento + Seguidores) · cada funil no seu período total · imposto ×1,1385 incluso</div>'
+    +stats
+    +'<div class="card"><div class="card-h">Investimento por funil <span class="hint">participação de cada um no gasto total</span></div>'+bars+'</div>'
+    +'<div class="card"><div class="card-h">Resumo por funil <span class="hint">investimento + resultado principal de cada funil</span></div><div class="table-scroll"><table class="tbl">'+head+'<tbody>'+body+totRow+'</tbody></table></div></div>';
+}
+
 /* =================== BOOT =================== */
 function el(id){ return document.getElementById(id); }
 el('updated').textContent = D.generatedAtBR || '—';
@@ -1166,12 +1201,13 @@ if(!D.form7 && !D.mtr){
   var f7=new Funnel('f7', D.form7||{}); f7.mount();
   var mtr=new mountMtr(); // captação MTR (sem leadscore)
   var funnels={ f7:f7, mtr:mtr };
-  var TABS=['f7','mtr'];
+  var TABS=['geral','f7','mtr'];
   if(D.imersao){ mountImersao(); TABS.push('imersao'); } // funil de vendas Imersão (Meta MCP)
   else { el('tab-imersao').innerHTML='<div class="coverage"><b>Sem dados da Imersão.</b> Rode o build-imersao.ps1 (dados via MCP do Meta).</div>'; }
   if(D.aq){ mountAquecimento(); TABS.push('aquecimento'); }  // campanha de alcance (Meta MCP)
   if(D.seg){ mountSeguidores(); TABS.push('seguidores'); }   // visitas ao perfil (Meta MCP)
-  function activateTab(id){ if(TABS.indexOf(id)<0)id='f7'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
+  mountGeral(); // visão geral (soma do gasto de todos os funis) — sempre por último (lê os totais já montados)
+  function activateTab(id){ if(TABS.indexOf(id)<0)id='geral'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
     TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
   function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t]&&funnels[t].showSub)funnels[t].showSub(parts[1]); }
   Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(t){ t.addEventListener('click',function(){ var id=t.getAttribute('data-tab'); activateTab(id); if(history.replaceState)history.replaceState(null,'','#'+id); }); });
