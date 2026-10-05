@@ -1159,35 +1159,69 @@ function mountSeguidores(){
    ABA GERAL — visão de abertura: soma do investimento de TODOS os funis
    ===================================================================== */
 function mountGeral(){
+  function q(id){ return document.getElementById('geral-'+id); }
   var COL={form7:'#5b5bd6',mtr:'#0ea5e9',imersao:'#10b981',aq:'#f59e0b',seg:'#ec4899'};
-  var items=[];
-  var f7=D.form7&&D.form7.totals; if(f7){ var fq=(f7.A||0)+(f7.B||0); items.push({k:'form7',label:'FORM7',tag:'captação · form ABI',spend:f7.spend||0,res:intf(f7.leads||0)+' leads · '+intf(fq)+' qualif',cost:'CPL Qualif '+(fq?money0(f7.spend/fq):'—')}); }
-  var mtr=D.mtr&&D.mtr.totals; if(mtr){ items.push({k:'mtr',label:'MTR',tag:'captação · perfil',spend:mtr.spend||0,res:intf(mtr.leads||0)+' leads',cost:'CPL '+(mtr.leads?money0(mtr.spend/mtr.leads):'—')}); }
-  var imr=D.imersao&&D.imersao.totals; if(imr){ items.push({k:'imersao',label:'Imersão',tag:'vendas',spend:imr.spend||0,res:intf(imr.purchases||0)+' vendas · ROAS '+nf2.format(dv(imr.revenue,imr.spend))+'x',cost:'CPA '+(imr.purchases?money0(imr.spend/imr.purchases):'—')}); }
-  var aq=D.aq&&D.aq.totals; if(aq){ items.push({k:'aq',label:'Aquecimento',tag:'alcance',spend:aq.spend||0,res:intf(aq.reach||0)+' alcance · '+nf1.format(aq.freq||dv(aq.impr,aq.reach))+'x',cost:'Custo/mil '+money(dv(aq.spend,aq.reach)*1000)}); }
-  var seg=D.seg&&D.seg.totals; if(seg){ items.push({k:'seg',label:'Seguidores',tag:'perfil',spend:seg.spend||0,res:intf(seg.visits||0)+' visitas perfil',cost:'Custo/visita '+(seg.visits?money(seg.spend/seg.visits):'—')}); }
-  var total=0; items.forEach(function(x){total+=x.spend;});
-  items.sort(function(a,b){return b.spend-a.spend;});
-  var maxS=Math.max.apply(null,items.map(function(x){return x.spend;}).concat([1]));
-  var capt=((f7?f7.leads:0)||0)+((mtr?mtr.leads:0)||0);
+  var FN=[];
+  if(D.form7&&D.form7.totals) FN.push({k:'form7',label:'FORM7',tag:'captação · form ABI',fd:D.form7});
+  if(D.mtr&&D.mtr.totals) FN.push({k:'mtr',label:'MTR',tag:'captação · perfil',fd:D.mtr});
+  if(D.imersao&&D.imersao.totals) FN.push({k:'imersao',label:'Imersão',tag:'vendas',fd:D.imersao});
+  if(D.aq&&D.aq.totals) FN.push({k:'aq',label:'Aquecimento',tag:'alcance',fd:D.aq});
+  if(D.seg&&D.seg.totals) FN.push({k:'seg',label:'Seguidores',tag:'perfil',fd:D.seg});
+  var minDate=FN.map(function(f){return f.fd.dateMin;}).filter(isDate).sort()[0]||'';
+  var maxDate=FN.map(function(f){return f.fd.dateMax;}).filter(isDate).sort().slice(-1)[0]||'';
+  var period='tudo', customRange=null;
   var sw=function(c){ return '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:'+c+';margin-right:7px;vertical-align:middle"></span>'; };
-  var stats='<div class="big-stats">'
-    +'<div class="stat-card gold"><div class="s-lab">Investimento total · todos os funis</div><div class="s-val">'+money(total)+'</div><div class="s-foot"><b>'+items.length+'</b> funis · imposto ×1,1385 incluso</div></div>'
-    +'<div class="stat-card"><div class="s-lab">Captação (leads)</div><div class="s-val">'+intf(capt)+'</div><div class="s-foot">FORM7 + MTR</div></div>'
-    +(imr?'<div class="stat-card"><div class="s-lab">Vendas · Imersão</div><div class="s-val">'+intf(imr.purchases||0)+'</div><div class="s-foot">CPA '+(imr.purchases?money0(imr.spend/imr.purchases):'—')+'</div></div>':'')
-    +(aq?'<div class="stat-card"><div class="s-lab">Alcance · Aquecimento</div><div class="s-val">'+intf(aq.reach||0)+'</div><div class="s-foot">Freq '+nf1.format(aq.freq||0)+'x</div></div>':'')
-    +'</div>';
-  var bars=items.map(function(x){ var w=Math.max(2,x.spend/maxS*100), pctT=total>0?x.spend/total*100:0;
-    return '<div class="crit"><div class="crit-top"><span class="cl">'+sw(COL[x.k])+x.label+' <small>'+x.tag+'</small></span><span class="cn">'+money0(x.spend)+' <small>('+pct(pctT)+')</small></span></div><div class="crit-track"><span style="width:'+w.toFixed(1)+'%;background:'+COL[x.k]+'"></span></div></div>'; }).join('');
-  var head='<thead><tr><th>Funil</th><th>Investimento</th><th>% do total</th><th>Resultado</th><th>Custo do resultado</th></tr></thead>';
-  var body=items.map(function(x){ var pctT=total>0?x.spend/total*100:0;
-    return '<tr><td><span class="name">'+sw(COL[x.k])+esc(x.label)+'</span></td><td class="num">'+money0(x.spend)+'</td><td class="num">'+pct(pctT)+'</td><td class="num">'+x.res+'</td><td class="num">'+x.cost+'</td></tr>'; }).join('');
-  var totRow='<tr style="border-top:2px solid var(--line)"><td><b>Total</b></td><td class="num"><b>'+money0(total)+'</b></td><td class="num"><b>100%</b></td><td class="num">—</td><td class="num">—</td></tr>';
+  function rangeFor(k){ if(k==='custom'&&customRange)return customRange; if(k==='hoje')return[maxDate,maxDate]; if(k==='ontem'){var y=addDays(maxDate,-1);return[y,y];} if(k==='7d')return[addDays(maxDate,-6),maxDate]; if(k==='30d')return[addDays(maxDate,-29),maxDate]; return[minDate,maxDate]; }
+  // métricas de um funil no período: 'tudo' usa os totais; recorte soma o diário (só linhas com data)
+  function metr(f,rng,isTudo){
+    var o={spend:0,leads:0,A:0,B:0,purchases:0,revenue:0,reach:0,impr:0,visits:0,pageEng:0};
+    if(isTudo){ var t=f.fd.totals||{}; o.spend=t.spend||0;o.leads=t.leads||0;o.A=t.A||0;o.B=t.B||0;o.purchases=t.purchases||0;o.revenue=t.revenue||0;o.reach=t.reach||0;o.impr=t.impr||0;o.visits=t.visits||0;o.pageEng=t.pageEng||0; return o; }
+    arr(f.fd.daily).forEach(function(d){ if(!isDate(d.date)||!inRange(d.date,rng))return; o.spend+=d.spend||0;o.leads+=d.leads||0;o.A+=d.A||0;o.B+=d.B||0;o.purchases+=d.purchases||0;o.revenue+=d.revenue||0;o.reach+=d.reach||0;o.impr+=d.impr||0;o.visits+=d.visits||0;o.pageEng+=d.pageEng||0; });
+    return o;
+  }
+  function resCost(k,m){
+    if(k==='form7'){ var fq=m.A+m.B; return {res:intf(m.leads)+' leads · '+intf(fq)+' qualif', cost:'CPL Qualif '+(fq?money0(m.spend/fq):'—')}; }
+    if(k==='mtr'){ return {res:intf(m.leads)+' leads', cost:'CPL '+(m.leads?money0(m.spend/m.leads):'—')}; }
+    if(k==='imersao'){ return {res:intf(m.purchases)+' vendas · ROAS '+nf2.format(dv(m.revenue,m.spend))+'x', cost:'CPA '+(m.purchases?money0(m.spend/m.purchases):'—')}; }
+    if(k==='aq'){ return {res:intf(m.reach)+' alcance'+(m.impr?' · '+nf1.format(dv(m.impr,m.reach))+'x':''), cost:'Custo/mil '+money(dv(m.spend,m.reach)*1000)}; }
+    if(k==='seg'){ return {res:intf(m.visits)+' visitas perfil', cost:'Custo/visita '+(m.visits?money(m.spend/m.visits):'—')}; }
+    return {res:'',cost:''};
+  }
+  function render(){
+    var isTudo=(period==='tudo'), rng=rangeFor(period);
+    var items=FN.map(function(f){ var m=metr(f,rng,isTudo), rc=resCost(f.k,m); return {k:f.k,label:f.label,tag:f.tag,spend:m.spend,m:m,res:rc.res,cost:rc.cost}; });
+    var total=0; items.forEach(function(x){total+=x.spend;});
+    items.sort(function(a,b){return b.spend-a.spend;});
+    var maxS=Math.max.apply(null,items.map(function(x){return x.spend;}).concat([1]));
+    var f7m=null,mtrm=null,imrm=null,aqm=null; items.forEach(function(x){ if(x.k==='form7')f7m=x.m; if(x.k==='mtr')mtrm=x.m; if(x.k==='imersao')imrm=x.m; if(x.k==='aq')aqm=x.m; });
+    var capt=((f7m?f7m.leads:0))+((mtrm?mtrm.leads:0));
+    var stats='<div class="big-stats">'
+      +'<div class="stat-card gold"><div class="s-lab">Investimento total · '+(isTudo?'todos os funis':'no período')+'</div><div class="s-val">'+money(total)+'</div><div class="s-foot"><b>'+items.length+'</b> funis · imposto ×1,1385 incluso</div></div>'
+      +'<div class="stat-card"><div class="s-lab">Captação (leads)</div><div class="s-val">'+intf(capt)+'</div><div class="s-foot">FORM7 + MTR</div></div>'
+      +(imrm?'<div class="stat-card"><div class="s-lab">Vendas · Imersão</div><div class="s-val">'+intf(imrm.purchases)+'</div><div class="s-foot">CPA '+(imrm.purchases?money0(imrm.spend/imrm.purchases):'—')+'</div></div>':'')
+      +(aqm?'<div class="stat-card"><div class="s-lab">Alcance · Aquecimento'+(isTudo?'':' (aprox.)')+'</div><div class="s-val">'+intf(aqm.reach)+'</div><div class="s-foot">'+(aqm.impr?'Freq '+nf1.format(dv(aqm.impr,aqm.reach))+'x':'')+'</div></div>':'')
+      +'</div>';
+    var bars=items.map(function(x){ var w=Math.max(2,x.spend/maxS*100), pctT=total>0?x.spend/total*100:0;
+      return '<div class="crit"><div class="crit-top"><span class="cl">'+sw(COL[x.k])+x.label+' <small>'+x.tag+'</small></span><span class="cn">'+money0(x.spend)+' <small>('+pct(pctT)+')</small></span></div><div class="crit-track"><span style="width:'+w.toFixed(1)+'%;background:'+COL[x.k]+'"></span></div></div>'; }).join('');
+    var head='<thead><tr><th>Funil</th><th>Investimento</th><th>% do total</th><th>Resultado</th><th>Custo do resultado</th></tr></thead>';
+    var body=items.map(function(x){ var pctT=total>0?x.spend/total*100:0;
+      return '<tr><td><span class="name">'+sw(COL[x.k])+esc(x.label)+'</span></td><td class="num">'+money0(x.spend)+'</td><td class="num">'+pct(pctT)+'</td><td class="num">'+x.res+'</td><td class="num">'+x.cost+'</td></tr>'; }).join('');
+    var totRow='<tr style="border-top:2px solid var(--line)"><td><b>Total</b></td><td class="num"><b>'+money0(total)+'</b></td><td class="num"><b>100%</b></td><td class="num">—</td><td class="num">—</td></tr>';
+    if(!items.length) body='<tr><td colspan="5" class="empty">Sem dados no período.</td></tr>';
+    q('body').innerHTML=stats
+      +'<div class="card"><div class="card-h">Investimento por funil <span class="hint">participação de cada um no gasto'+(isTudo?' total':' do período')+'</span></div>'+bars+'</div>'
+      +'<div class="card"><div class="card-h">Resumo por funil <span class="hint">investimento + resultado principal de cada funil</span></div><div class="table-scroll"><table class="tbl">'+head+'<tbody>'+body+totRow+'</tbody></table></div></div>';
+  }
+  function periodsHTML(){ return PRESETS.filter(function(p){return p.k!=='leads';}).map(function(p){return '<button data-k="'+p.k+'" class="pbtn">'+p.label+'</button>';}).join('')+'<span class="daterange" id="geral-daterange"><span class="dr-l">De</span> <input type="date" id="geral-dtDe" min="'+minDate+'" max="'+maxDate+'"> <span class="dr-l">até</span> <input type="date" id="geral-dtAte" min="'+minDate+'" max="'+maxDate+'"></span>'; }
+  function syncPeriodUI(){ var rng=rangeFor(period); Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.classList.toggle('on', period===b.getAttribute('data-k')); }); var dr=q('daterange'); if(dr) dr.classList.toggle('on', period==='custom'); var de=q('dtDe'),ate=q('dtAte'); if(de&&ate){de.value=rng[0];ate.value=rng[1];} }
   document.getElementById('tab-geral').innerHTML=
-    '<div class="coverage">Visão <b>GERAL</b> · soma do <b>investimento de todos os funis</b> (FORM7 + MTR + Imersão + Aquecimento + Seguidores) · cada funil no seu período total · imposto ×1,1385 incluso</div>'
-    +stats
-    +'<div class="card"><div class="card-h">Investimento por funil <span class="hint">participação de cada um no gasto total</span></div>'+bars+'</div>'
-    +'<div class="card"><div class="card-h">Resumo por funil <span class="hint">investimento + resultado principal de cada funil</span></div><div class="table-scroll"><table class="tbl">'+head+'<tbody>'+body+totRow+'</tbody></table></div></div>';
+    '<div class="coverage">Visão <b>GERAL</b> · soma do <b>investimento de todos os funis</b> (FORM7 + MTR + Imersão + Aquecimento + Seguidores) · imposto ×1,1385 · use o filtro de data à direita — em <b>Tudo</b> usa o total de cada funil; recortes somam o diário (alcance vira aproximado)</div>'
+    +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Geral · todos os funis</div><div class="periods" id="geral-periods"></div></div>'
+    +'<div id="geral-body"></div>';
+  q('periods').innerHTML=periodsHTML();
+  Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.addEventListener('click',function(){ period=b.getAttribute('data-k'); customRange=null; syncPeriodUI(); render(); }); });
+  var de=q('dtDe'),ate=q('dtAte'); function onDate(){ var s=de.value,e=ate.value; if(!s||!e)return; if(s>e){var t=s;s=e;e=t;} if(s<minDate)s=minDate; if(e>maxDate)e=maxDate; customRange=[s,e]; period='custom'; syncPeriodUI(); render(); } de.addEventListener('change',onDate); ate.addEventListener('change',onDate);
+  syncPeriodUI(); render();
 }
 
 /* =================== BOOT =================== */
