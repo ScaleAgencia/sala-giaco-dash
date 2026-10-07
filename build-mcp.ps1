@@ -7,8 +7,8 @@ $root='C:\dev\sala-giaco'
 
 # --- ALCANCE UNICO total de cada campanha (vem do insight campanha date_preset=maximum) ---
 # ATUALIZAR a cada refresh (consulta campanha maximum: reach da campanha inteira):
-$AQ_REACH_TOTAL  = 66999
-$SEG_REACH_TOTAL = 24037
+$AQ_REACH_TOTAL  = 67092
+$SEG_REACH_TOTAL = 30285
 
 $aqCamp  = 'GIACO | E1-DIST | P2-QUENTE | AQUECIMENTO | 2026-07-09'
 $segCamp = 'GIACO | ENG | P1-FRIO | | 24-09-26 | C1'
