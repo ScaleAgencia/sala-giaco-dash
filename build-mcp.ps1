@@ -15,12 +15,25 @@ $SEG_DAILY_FREQ = 1.11
 # cliques totais da campanha (o breakdown diario nem sempre traz link_click) — ATUALIZAR a cada refresh:
 $AQ_CLICKS_TOTAL  = 2
 $SEG_CLICKS_TOTAL = 3732
+# OVERRIDE de gasto EXIBIDO (valor final JA com imposto) informado pelo usuario; 0 = desliga (usa o gasto real do Meta).
+# Escala proporcional o diario e a arvore p/ bater nesse total.
+# 21/10/2026: Aquecimento fica no REAL (0 = desligado); Seguidores reduzido p/ 820,20 a pedido do usuario.
+$AQ_SPEND_OVERRIDE  = 0
+$SEG_SPEND_OVERRIDE = 820.20
 
 $aqCamp  = 'GIACO | E1-DIST | P2-QUENTE | AQUECIMENTO | 2026-07-09'
 $segCamp = 'GIACO | ENG | P1-FRIO | | 24-09-26 | C1'
 
 function Sum($arr,$i){ $s=0.0; foreach($r in $arr){ $s+=[double]$r[$i] }; return $s }
 function SumI($arr,$i){ $s=0; foreach($r in $arr){ $s+=[int]$r[$i] }; return $s }
+# escala proporcional o gasto (diario + arvore + total) p/ bater num total EXIBIDO informado
+function ScaleSpend($daily,$grain,$tot,$target){
+  if($target -le 0 -or $tot.spend -le 0){ return }
+  $f=[double]$target/[double]$tot.spend
+  foreach($d in $daily){ $d.spend=[math]::Round([double]$d.spend*$f,2) }
+  foreach($g in $grain){ $g.spend=[math]::Round([double]$g.spend*$f,2) }
+  $tot.spend=[math]::Round([double]$target,2)
+}
 
 # ===== AQUECIMENTO =====
 $aqD = Get-Content "$root\data\mcp-aq-daily.json" -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -35,6 +48,7 @@ $aqTot=[pscustomobject]@{spend=$aqSpend;impr=$aqImpr;reach=$AQ_REACH_TOTAL;freq=
 # grain por anuncio: [ad, adset, spend, impr, reach, freq, clicks]
 $aqGrain=@()
 foreach($r in $aqA){ $aqGrain+=[pscustomobject]@{date=$aqMax;campaign=$aqCamp;adset=[string]$r[1];ad=[string]$r[0];spend=[math]::Round([double]$r[2]*$TAX,2);impr=[int]$r[3];reach=[int]$r[4];clicks=[int]$r[6]} }
+ScaleSpend $aqDaily $aqGrain $aqTot $AQ_SPEND_OVERRIDE
 $aq=[pscustomobject]@{account='CA 01 - Giacobelli';campaign=$aqCamp;dateMin=$aqMin;dateMax=$aqMax;totals=$aqTot;daily=$aqDaily;grain=$aqGrain}
 
 # ===== SEGUIDORES (visitas ao perfil) =====
@@ -50,6 +64,7 @@ $sgTot=[pscustomobject]@{spend=$sgSpend;impr=$sgImpr;reach=$SEG_REACH_TOTAL;freq
 # grain por anuncio: [ad, adset, spend, impr, reach, clicks, pageEng, visits]
 $sgGrain=@()
 foreach($r in $sgA){ $sgGrain+=[pscustomobject]@{date=$sgMax;campaign=$segCamp;adset=[string]$r[1];ad=[string]$r[0];spend=[math]::Round([double]$r[2]*$TAX,2);impr=[int]$r[3];reach=[int]$r[4];clicks=[int]$r[5];pageEng=[int]$r[6];visits=[int]$r[7]} }
+ScaleSpend $sgDaily $sgGrain $sgTot $SEG_SPEND_OVERRIDE
 $seg=[pscustomobject]@{account='CA 01 - Giacobelli';campaign=$segCamp;dateMin=$sgMin;dateMax=$sgMax;totals=$sgTot;daily=$sgDaily;grain=$sgGrain}
 
 $gen=(Get-Date).ToString('dd/MM/yyyy HH:mm')
