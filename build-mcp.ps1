@@ -8,13 +8,13 @@ $root='C:\dev\sala-giaco'
 # --- ALCANCE UNICO total de cada campanha (vem do insight campanha date_preset=maximum) ---
 # ATUALIZAR a cada refresh (consulta campanha maximum: reach da campanha inteira):
 $AQ_REACH_TOTAL  = 68808
-$SEG_REACH_TOTAL = 64090
+$SEG_REACH_TOTAL = 66761
 # Meta parou de entregar reach por dia (breakdown diario vem nulo) -> derivar alcance diario = impressoes / freq diaria tipica:
 $AQ_DAILY_FREQ  = 1.05
 $SEG_DAILY_FREQ = 1.11
 # cliques totais da campanha (o breakdown diario nem sempre traz link_click) — ATUALIZAR a cada refresh:
 $AQ_CLICKS_TOTAL  = 2
-$SEG_CLICKS_TOTAL = 3732
+$SEG_CLICKS_TOTAL = 3882
 # OVERRIDE de gasto EXIBIDO (valor final JA com imposto) informado pelo usuario; 0 = desliga (usa o gasto real do Meta).
 # Escala proporcional o diario e a arvore p/ bater nesse total.
 # 21/10/2026: Aquecimento fica no REAL (0 = desligado); Seguidores reduzido p/ 820,20 a pedido do usuario.
