@@ -1156,7 +1156,7 @@ function mountSeguidores(){
 }
 
 /* =====================================================================
-   ABA GERAL — visão de abertura: soma do investimento de TODOS os funis
+   ABA GERAL — visão de abertura: soma do investimento dos funis desta dash
    ===================================================================== */
 function mountGeral(){
   function q(id){ return document.getElementById('geral-'+id); }
@@ -1196,7 +1196,7 @@ function mountGeral(){
     var f7m=null,mtrm=null,imrm=null,aqm=null; items.forEach(function(x){ if(x.k==='form7')f7m=x.m; if(x.k==='mtr')mtrm=x.m; if(x.k==='imersao')imrm=x.m; if(x.k==='aq')aqm=x.m; });
     var capt=((f7m?f7m.leads:0))+((mtrm?mtrm.leads:0));
     var stats='<div class="big-stats">'
-      +'<div class="stat-card gold"><div class="s-lab">Investimento total · '+(isTudo?'todos os funis':'no período')+'</div><div class="s-val">'+money(total)+'</div><div class="s-foot"><b>'+items.length+'</b> funis · imposto ×1,1385 incluso</div></div>'
+      +'<div class="stat-card gold"><div class="s-lab">Investimento total · '+(isTudo?'funis da dash':'no período')+'</div><div class="s-val">'+money(total)+'</div><div class="s-foot"><b>'+items.length+'</b> funis · imposto ×1,1385 incluso</div></div>'
       +'<div class="stat-card"><div class="s-lab">Captação (leads)</div><div class="s-val">'+intf(capt)+'</div><div class="s-foot">FORM7 + MTR</div></div>'
       +(imrm?'<div class="stat-card"><div class="s-lab">Vendas · Imersão</div><div class="s-val">'+intf(imrm.purchases)+'</div><div class="s-foot">CPA '+(imrm.purchases?money0(imrm.spend/imrm.purchases):'—')+'</div></div>':'')
       +(aqm?'<div class="stat-card"><div class="s-lab">Alcance · Aquecimento'+(isTudo?'':' (aprox.)')+'</div><div class="s-val">'+intf(aqm.reach)+'</div><div class="s-foot">'+(aqm.impr?'Freq '+nf1.format(dv(aqm.impr,aqm.reach))+'x':'')+'</div></div>':'')
@@ -1215,8 +1215,8 @@ function mountGeral(){
   function periodsHTML(){ return PRESETS.filter(function(p){return p.k!=='leads';}).map(function(p){return '<button data-k="'+p.k+'" class="pbtn">'+p.label+'</button>';}).join('')+'<span class="daterange" id="geral-daterange"><span class="dr-l">De</span> <input type="date" id="geral-dtDe" min="'+minDate+'" max="'+maxDate+'"> <span class="dr-l">até</span> <input type="date" id="geral-dtAte" min="'+minDate+'" max="'+maxDate+'"></span>'; }
   function syncPeriodUI(){ var rng=rangeFor(period); Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.classList.toggle('on', period===b.getAttribute('data-k')); }); var dr=q('daterange'); if(dr) dr.classList.toggle('on', period==='custom'); var de=q('dtDe'),ate=q('dtAte'); if(de&&ate){de.value=rng[0];ate.value=rng[1];} }
   document.getElementById('tab-geral').innerHTML=
-    '<div class="coverage">Visão <b>GERAL</b> · soma do <b>investimento de todos os funis</b> (FORM7 + MTR + Imersão + Aquecimento + Seguidores) · imposto ×1,1385 · use o filtro de data à direita — em <b>Tudo</b> usa o total de cada funil; recortes somam o diário (alcance vira aproximado)</div>'
-    +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Geral · todos os funis</div><div class="periods" id="geral-periods"></div></div>'
+    '<div class="coverage">Visão <b>GERAL</b> · soma do <b>investimento dos funis desta dash</b> (FORM7 + MTR + Imersão + Aquecimento + Seguidores) · imposto ×1,1385 · use o filtro de data à direita — em <b>Tudo</b> usa o total de cada funil; recortes somam o diário (alcance vira aproximado)</div>'
+    +'<div class="subhead"><div style="font-size:13px;color:var(--ink2);font-weight:700">Geral</div><div class="periods" id="geral-periods"></div></div>'
     +'<div id="geral-body"></div>';
   q('periods').innerHTML=periodsHTML();
   Array.prototype.forEach.call(q('periods').querySelectorAll('.pbtn'),function(b){ b.addEventListener('click',function(){ period=b.getAttribute('data-k'); customRange=null; syncPeriodUI(); render(); }); });
@@ -1240,7 +1240,7 @@ if(!D.form7 && !D.mtr){
   else { el('tab-imersao').innerHTML='<div class="coverage"><b>Sem dados da Imersão.</b> Rode o build-imersao.ps1 (dados via MCP do Meta).</div>'; }
   if(D.aq){ mountAquecimento(); TABS.push('aquecimento'); }  // campanha de alcance (Meta MCP)
   if(D.seg){ mountSeguidores(); TABS.push('seguidores'); }   // visitas ao perfil (Meta MCP)
-  mountGeral(); // visão geral (soma do gasto de todos os funis) — sempre por último (lê os totais já montados)
+  mountGeral(); // visão geral (soma do gasto dos funis desta dash) — sempre por último (lê os totais já montados)
   function activateTab(id){ if(TABS.indexOf(id)<0)id='geral'; Array.prototype.forEach.call(document.querySelectorAll('.tabs.main .tab'),function(x){x.classList.toggle('active',x.getAttribute('data-tab')===id);});
     TABS.forEach(function(t){ el('tab-'+t).classList.toggle('hidden',t!==id); }); }
   function route(){ var raw=(location.hash||'').replace('#',''); var parts=raw.split('.'); var t=parts[0]; if(TABS.indexOf(t)<0)return; activateTab(t); if(parts[1]&&funnels[t]&&funnels[t].showSub)funnels[t].showSub(parts[1]); }
