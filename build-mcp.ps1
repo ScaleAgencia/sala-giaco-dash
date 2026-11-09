@@ -7,19 +7,27 @@ $root='C:\dev\sala-giaco'
 
 # --- ALCANCE UNICO total de cada campanha (vem do insight campanha date_preset=maximum) ---
 # ATUALIZAR a cada refresh (consulta campanha maximum: reach da campanha inteira):
-$AQ_REACH_TOTAL  = 70663
-$SEG_REACH_TOTAL = 68016
+$AQ_REACH_TOTAL  = 76439
+$SEG_REACH_TOTAL = 73188
 # Meta parou de entregar reach por dia (breakdown diario vem nulo) -> derivar alcance diario = impressoes / freq diaria tipica:
 $AQ_DAILY_FREQ  = 1.05
 $SEG_DAILY_FREQ = 1.11
 # cliques totais da campanha (o breakdown diario nem sempre traz link_click) — ATUALIZAR a cada refresh:
 $AQ_CLICKS_TOTAL  = 3
-$SEG_CLICKS_TOTAL = 3972
+$SEG_CLICKS_TOTAL = 4454
 # OVERRIDE de gasto EXIBIDO (valor final JA com imposto) informado pelo usuario; 0 = desliga (usa o gasto real do Meta).
 # Escala proporcional o diario e a arvore p/ bater nesse total.
 # 21/10/2026: Aquecimento fica no REAL (0 = desligado); Seguidores reduzido p/ 820,20 a pedido do usuario.
 $AQ_SPEND_OVERRIDE  = 0
 $SEG_SPEND_OVERRIDE = 0   # 28/10: usuario pediu p/ voltar ao gasto REAL do MCP (era 820,20)
+# OVERRIDE de gasto POR PERIODO (valor EXIBIDO, ja c/ imposto) informado pelo usuario ("dados reais" dele).
+# O diario da janela e escalado proporcional ao gasto real do Meta naquela janela (se o Meta tiver 0, divide igual
+# entre os dias da janela). Total e arvore acompanham a diferenca; fora da janela fica o gasto real. @() = desligado.
+# 09/11/2026: usuario pediu Aquecimento = R$ 543,07 em novembro ate 09/11 (Meta: 1.166,68 cru = 1.328,27 c/ imposto).
+#   Ele vai mandar o gasto dos proximos dias -> adicionar uma janela por dia, ex.: @{from='2026-11-10';to='2026-11-10';target=12.34}
+#   (o dia precisa existir no mcp-aq-daily.json -> puxar o diario do MCP ate a data, mesmo com gasto 0).
+$AQ_PERIOD_OVERRIDES  = @( @{ from='2026-11-01'; to='2026-11-09'; target=543.07 } )
+$SEG_PERIOD_OVERRIDES = @()
 
 $aqCamp  = 'GIACO | E1-DIST | P2-QUENTE | AQUECIMENTO | 2026-07-09'
 $segCamp = 'GIACO | ENG | P1-FRIO | | 24-09-26 | C1'
@@ -33,6 +41,24 @@ function ScaleSpend($daily,$grain,$tot,$target){
   foreach($d in $daily){ $d.spend=[math]::Round([double]$d.spend*$f,2) }
   foreach($g in $grain){ $g.spend=[math]::Round([double]$g.spend*$f,2) }
   $tot.spend=[math]::Round([double]$target,2)
+}
+# override por janela de datas (ver $AQ_PERIOD_OVERRIDES)
+function PeriodOverride($daily,$grain,$tot,$ovs,$label){
+  foreach($o in @($ovs)){
+    $win=@($daily | Where-Object { $_.date -ge $o.from -and $_.date -le $o.to })
+    if($win.Count -eq 0){ Write-Host ("  AVISO {0}: janela {1}..{2} sem dias no diario (puxar o MCP ate a data)" -f $label,$o.from,$o.to); continue }
+    $old=0.0; foreach($d in $win){ $old+=[double]$d.spend }
+    $target=[double]$o.target
+    if($old -gt 0){ $f=$target/$old; foreach($d in $win){ $d.spend=[math]::Round([double]$d.spend*$f,2) } }
+    else { $each=[math]::Round($target/$win.Count,2); foreach($d in $win){ $d.spend=$each } }
+    $new=0.0; foreach($d in $win){ $new+=[double]$d.spend }
+    $diff=[math]::Round($target-$new,2)
+    if($diff -ne 0){ $big=$win | Sort-Object { [double]$_.spend } -Descending | Select-Object -First 1; $big.spend=[math]::Round([double]$big.spend+$diff,2) }
+    $oldTot=[double]$tot.spend
+    $tot.spend=[math]::Round($oldTot-$old+$target,2)
+    if($oldTot -gt 0){ $g=[double]$tot.spend/$oldTot; foreach($x in $grain){ $x.spend=[math]::Round([double]$x.spend*$g,2) } }
+    Write-Host ("  {0}: janela {1}..{2} gasto exibido {3} -> {4} (c/ imposto) | total {5} -> {6}" -f $label,$o.from,$o.to,[math]::Round($old,2),$target,$oldTot,$tot.spend)
+  }
 }
 
 # ===== AQUECIMENTO =====
@@ -49,6 +75,7 @@ $aqTot=[pscustomobject]@{spend=$aqSpend;impr=$aqImpr;reach=$AQ_REACH_TOTAL;freq=
 $aqGrain=@()
 foreach($r in $aqA){ $aqGrain+=[pscustomobject]@{date=$aqMax;campaign=$aqCamp;adset=[string]$r[1];ad=[string]$r[0];spend=[math]::Round([double]$r[2]*$TAX,2);impr=[int]$r[3];reach=[int]$r[4];clicks=[int]$r[6]} }
 ScaleSpend $aqDaily $aqGrain $aqTot $AQ_SPEND_OVERRIDE
+PeriodOverride $aqDaily $aqGrain $aqTot $AQ_PERIOD_OVERRIDES 'AQUECIMENTO'
 $aq=[pscustomobject]@{account='CA 01 - Giacobelli';campaign=$aqCamp;dateMin=$aqMin;dateMax=$aqMax;totals=$aqTot;daily=$aqDaily;grain=$aqGrain}
 
 # ===== SEGUIDORES (visitas ao perfil) =====
@@ -65,6 +92,7 @@ $sgTot=[pscustomobject]@{spend=$sgSpend;impr=$sgImpr;reach=$SEG_REACH_TOTAL;freq
 $sgGrain=@()
 foreach($r in $sgA){ $sgGrain+=[pscustomobject]@{date=$sgMax;campaign=$segCamp;adset=[string]$r[1];ad=[string]$r[0];spend=[math]::Round([double]$r[2]*$TAX,2);impr=[int]$r[3];reach=[int]$r[4];clicks=[int]$r[5];pageEng=[int]$r[6];visits=[int]$r[7]} }
 ScaleSpend $sgDaily $sgGrain $sgTot $SEG_SPEND_OVERRIDE
+PeriodOverride $sgDaily $sgGrain $sgTot $SEG_PERIOD_OVERRIDES 'SEGUIDORES'
 $seg=[pscustomobject]@{account='CA 01 - Giacobelli';campaign=$segCamp;dateMin=$sgMin;dateMax=$sgMax;totals=$sgTot;daily=$sgDaily;grain=$sgGrain}
 
 $gen=(Get-Date).ToString('dd/MM/yyyy HH:mm')
